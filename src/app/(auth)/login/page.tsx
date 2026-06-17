@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SocialLogin } from '@/components/auth/social-login';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -37,6 +38,21 @@ function LoginForm() {
       <div className="text-center mb-8">
         <Link href="/" className="text-2xl font-bold text-primary">SubZeed</Link>
         <p className="mt-2 text-text-secondary">เข้าสู่ระบบเพื่อใช้งาน</p>
+      </div>
+
+      {/* Social Login */}
+      <div className="mb-6">
+        <SocialLogin />
+      </div>
+
+      {/* Divider */}
+      <div className="relative mb-6">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-white px-2 text-text-secondary">หรือเข้าสู่ระบบด้วยอีเมล</span>
+        </div>
       </div>
 
       <form onSubmit={handleLogin} className="rounded-xl border border-border bg-white p-6 space-y-4">

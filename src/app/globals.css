@@ -28,8 +28,8 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
-
-
+  }
+}
 
 
 
@@ -39,7 +39,7 @@ body {
   font-family: var(--font-sans, Arial, Helvetica, sans-serif);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-
+}
 
 
 
@@ -58,7 +58,7 @@ body {
   pointer-events: none;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
   z-index: 10;
-
+}
 
 @keyframes subtitleFadeIn {
   from { opacity: 0; transform: translateY(8px); }

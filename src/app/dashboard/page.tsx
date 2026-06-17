@@ -23,8 +23,8 @@ export default function DashboardPage() {
       .select('*')
       .eq('user_id', profile.id)
       .order('updated_at', { ascending: false })
-      .then(({ data }) => {
-        if (data) setProjects(data as Project[]);
+      .then((result: { data: Project[] | null }) => {
+        if (result.data) setProjects(result.data);
         setLoading(false);
       });
   }, [profile]);

@@ -63,7 +63,7 @@ export default function DashboardPage() {
           )}
 
           {/* Projects */}
-          <h2 className="text-lg font-semibold mb-4">โปรเจกต์ล่าสุด</h2>
+          <h2 className="text-lg font-semibold mb-4">โปรเจกต์ล่าสุด.</h2>
           {loading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {[1, 2, 3].map((i) => (

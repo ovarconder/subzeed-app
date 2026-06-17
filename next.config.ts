@@ -1,18 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Allow large audio body for Whisper API
   experimental: {
     serverActions: {
       bodySizeLimit: '25mb',
     },
   },
-  // API route config
-  api: {
-    bodyParser: {
-      sizeLimit: '25mb',
-    },
-  },
+  // In Next.js 16, increase body size via serverActions only
 };
 
 export default nextConfig;
+

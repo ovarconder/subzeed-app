@@ -1,65 +1,73 @@
-import Image from "next/image";
+'use client';
+import Link from 'next/link';
+import { Navbar } from '@/components/layout/navbar';
+import { Footer } from '@/components/layout/footer';
+import { Button } from '@/components/ui/button';
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <>
+      <Navbar />
+      <main className="flex-1">
+        {/* Hero */}
+        <section className="relative overflow-hidden bg-gradient-to-b from-primary-light/50 to-white py-24 sm:py-32">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 text-center">
+            <h1 className="text-4xl font-bold tracking-tight text-text sm:text-6xl">
+              สร้างซับไตเติลภาษาไทย
+              <span className="block text-primary mt-2">ง่ายๆ ในไม่กี่คลิก</span>
+            </h1>
+            <p className="mt-6 text-lg text-text-secondary max-w-2xl mx-auto">
+              อัปโหลดวิดีโอ ระบบถอดคำพูดเป็นซับไตเติลภาษาไทยอัตโนมัติ
+              รองรับหลายรูปแบบไฟล์ เริ่มต้นใช้งานฟรี!
+            </p>
+            <div className="mt-10 flex items-center justify-center gap-4">
+              <Link href="/signup">
+                <Button size="lg">เริ่มใช้งานฟรี</Button>
+              </Link>
+              <Link href="/pricing">
+                <Button variant="outline" size="lg">
+                  ดูแพ็กเกจ
+                </Button>
+              </Link>
+            </div>
+            {/* Stats */}
+            <div className="mt-16 grid grid-cols-2 gap-8 sm:grid-cols-4">
+              {[
+                { label: 'รองรับภาษาไทย', value: '100%' },
+                { label: 'ประมวลผลเร็ว', value: '10x' },
+                { label: 'ราคาประหยัด', value: 'เริ่ม 0.-' },
+                { label: 'ไม่มีค่าเซิร์ฟเวอร์', value: '0 บาท' },
+              ].map((stat) => (
+                <div key={stat.label}>
+                  <div className="text-2xl font-bold text-primary">{stat.value}</div>
+                  <div className="text-sm text-text-secondary">{stat.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Features */}
+        <section className="py-20">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6">
+            <h2 className="text-3xl font-bold text-center mb-12">ทำไมต้อง SubZeed?</h2>
+            <div className="grid gap-8 sm:grid-cols-3">
+              {[
+                { title: 'ถอดความอัตโนมัติ', desc: 'ใช้ Whisper AI ถอดเสียงพูดเป็นข้อความภาษาไทย แม่นยำระดับสูง' },
+                { title: 'ประมวลผลฝั่งคุณ', desc: 'ดึงเสียงและเรนเดอร์ซับบนเบราว์เซอร์ของคุณ — ไม่เสียค่าทราฟฟิกเซิร์ฟเวอร์' },
+                { title: 'ปรับแต่งได้', desc: 'เปลี่ยนฟอนต์ ตำแหน่ง สี และเพิ่ม Animation ให้ซับไตเติล' },
+              ].map((f) => (
+                <div key={f.title} className="rounded-xl border border-border bg-white p-6">
+                  <h3 className="text-lg font-semibold mb-2">{f.title}</h3>
+                  <p className="text-sm text-text-secondary">{f.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       </main>
-    </div>
+      <Footer />
+    </>
   );
 }
+

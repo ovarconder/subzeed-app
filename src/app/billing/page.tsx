@@ -22,8 +22,8 @@ export default function BillingPage() {
       .select('*')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        if (data) setHistory(data as BillingHistory[]);
+      .then((result: { data: BillingHistory[] | null }) => {
+        if (result.data) setHistory(result.data);
       });
   }, [profile]);
 

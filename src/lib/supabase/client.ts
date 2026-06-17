@@ -1,7 +1,6 @@
 'use client';
 
-// Lazy init เพื่อป้องกัน prerender error ตอน build
-let supabaseInstance: ReturnType<typeof createBrowserClient> | null = null;
+let supabaseInstance: ReturnType<typeof import('@supabase/ssr').createBrowserClient> | null = null;
 
 export const createClient = () => {
   if (supabaseInstance) return supabaseInstance;
@@ -10,7 +9,6 @@ export const createClient = () => {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    // Return mock client during prerender/build
     if (typeof window === 'undefined') {
       return {
         auth: {
@@ -25,18 +23,15 @@ export const createClient = () => {
             eq: () => ({
               single: () => Promise.resolve({ data: null, error: null }),
               order: () => Promise.resolve({ data: null, error: null }),
-              then: () => Promise.resolve({ data: null, error: null }),
+              then: (fn: any) => fn({ data: null, error: null }),
             }),
             order: () => Promise.resolve({ data: null, error: null }),
           }),
           insert: () => Promise.resolve({ data: null, error: null }),
-          update: () => ({
-            eq: () => Promise.resolve({ data: null, error: null }),
-          }),
+          update: () => ({ eq: () => Promise.resolve({ data: null, error: null }) }),
         }),
       } as any;
     }
-
     throw new Error('Missing Supabase environment variables');
   }
 

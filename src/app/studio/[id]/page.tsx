@@ -21,13 +21,13 @@ export default function StudioEditPage() {
 
   useEffect(() => {
     const fetchProject = async () => {
-      const { data } = await supabase
+      const result: { data: Project | null } = await supabase
         .from('projects')
         .select('*')
         .eq('id', params.id)
         .single();
-      if (data) {
-        store.setCurrentProject(data as Project);
+      if (result.data) {
+        store.setCurrentProject(result.data);
       } else {
         addToast('ไม่พบโปรเจกต์', 'error');
         router.push('/dashboard');

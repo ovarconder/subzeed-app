@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
+import type { Session, User, AuthChangeEvent } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import type { Profile } from '@/lib/types';
 
@@ -34,12 +34,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
+    const result: { data: Profile | null } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
-    if (data) setProfile(data as Profile);
+    if (result.data) setProfile(result.data);
   };
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, s) => {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) fetchProfile(s.user.id);

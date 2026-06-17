@@ -17,8 +17,8 @@ export default function ClientReviewPage() {
       .select('*')
       .eq('review_token', params.token)
       .single()
-      .then(({ data }) => {
-        setProject(data as Project);
+      .then((result: { data: Project | null }) => {
+        setProject(result.data);
         setLoading(false);
       });
   }, [params.token]);

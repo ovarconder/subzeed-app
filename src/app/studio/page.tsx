@@ -161,7 +161,6 @@ export default function StudioPage() {
 
   // ---- Subtitle CRUD ----
   const addSubtitle = () => {
-    if (!store.videoRef?.current) return;
     const ct = videoRef.current?.currentTime || 0;
     const newSub: SubtitleEntry = {
       id: `sub-${uid()}`,

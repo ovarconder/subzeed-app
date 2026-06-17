@@ -16,7 +16,7 @@ export const createServerSupabase = async () => {
         setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options as Partial<RequestCookies>)
+              cookieStore.set(name, value, options)
             );
           } catch {
             // Called from Server Component — ignore
@@ -31,7 +31,6 @@ export const createServiceSupabase = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  // Dynamic import to avoid client bundling
   const { createClient } = require('@supabase/supabase-js');
   return createClient(supabaseUrl, serviceRoleKey);
 };

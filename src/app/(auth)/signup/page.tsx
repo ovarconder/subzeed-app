@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { useFingerprint } from '@/hooks/useFingerprint';
 import { useToast } from '@/components/ui/toaster';
 
-export default function SignupPage() {
+function SignupForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -91,43 +91,51 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <Link href="/" className="text-2xl font-bold text-primary">SubZeed</Link>
-          <p className="mt-2 text-text-secondary">สมัครใช้งานฟรี</p>
-        </div>
+    <div className="w-full max-w-sm">
+      <div className="text-center mb-8">
+        <Link href="/" className="text-2xl font-bold text-primary">SubZeed</Link>
+        <p className="mt-2 text-text-secondary">สมัครใช้งานฟรี</p>
+      </div>
 
-        <form onSubmit={handleSignup} className="rounded-xl border border-border bg-white p-6 space-y-4">
-          <Input label="อีเมล" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <Input label="รหัสผ่าน" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+      <form onSubmit={handleSignup} className="rounded-xl border border-border bg-white p-6 space-y-4">
+        <Input label="อีเมล" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <Input label="รหัสผ่าน" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
 
-          {isAbuser && (
-            <div className="rounded-lg bg-danger/10 border border-danger/20 p-3 text-sm text-danger">
-              <p className="font-semibold">🚫 ตรวจพบการสมัครซ้ำ</p>
-              <p className="mt-1">อุปกรณ์นี้เคยใช้โควตาฟรีไปแล้ว หากต้องการใช้งานต่อ กรุณาสมัครแพ็กเกจแบบเสียเงิน</p>
-            </div>
-          )}
+        {isAbuser && (
+          <div className="rounded-lg bg-danger/10 border border-danger/20 p-3 text-sm text-danger">
+            <p className="font-semibold">🚫 ตรวจพบการสมัครซ้ำ</p>
+            <p className="mt-1">อุปกรณ์นี้เคยใช้โควตาฟรีไปแล้ว หากต้องการใช้งานต่อ กรุณาสมัครแพ็กเกจแบบเสียเงิน</p>
+          </div>
+        )}
 
-          {fpLoading && (
-            <div className="flex items-center gap-2 text-xs text-text-secondary">
-              <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-              กำลังตรวจสอบความปลอดภัยของอุปกรณ์...
-            </div>
-          )}
+        {fpLoading && (
+          <div className="flex items-center gap-2 text-xs text-text-secondary">
+            <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+            กำลังตรวจสอบความปลอดภัยของอุปกรณ์...
+          </div>
+        )}
 
           {error && <p className="text-sm text-danger">{error}</p>}
 
-          <Button type="submit" loading={loading} className="w-full" disabled={isAbuser}>
-            สมัครใช้งาน
-          </Button>
-        </form>
+        <Button type="submit" loading={loading} className="w-full" disabled={isAbuser}>
+          สมัครใช้งาน
+        </Button>
+      </form>
 
-        <p className="mt-4 text-center text-sm text-text-secondary">
-          มีบัญชีอยู่แล้ว?{' '}
-          <Link href="/login" className="text-primary font-medium hover:underline">เข้าสู่ระบบ</Link>
-        </p>
-      </div>
+      <p className="mt-4 text-center text-sm text-text-secondary">
+        มีบัญชีอยู่แล้ว?{' '}
+        <Link href="/login" className="text-primary font-medium hover:underline">เข้าสู่ระบบ</Link>
+      </p>
+    </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-surface px-4">
+      <Suspense fallback={<div className="text-text-secondary">กำลังโหลด...</div>}>
+        <SignupForm />
+      </Suspense>
     </div>
   );
 }

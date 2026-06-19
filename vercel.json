@@ -3,7 +3,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
-  "public": true,
   "regions": ["hnd1"],
   "rewrites": [
     {

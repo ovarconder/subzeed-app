@@ -7,13 +7,17 @@ import { Button } from '@/components/ui/button';
 import { TierBadge } from '@/components/ui/badge';
 import { useAuth } from '@/components/auth/auth-provider';
 import { createClient } from '@/lib/supabase/client';
+import { useToast } from '@/components/ui/toaster';
 import { TIER_CONFIGS } from '@/lib/types';
-import type { BillingHistory } from '@/lib/types';
+import { generateReceiptPDF, downloadInvoice } from '@/lib/invoice';
+import type { BillingHistory, Profile } from '@/lib/types';
 
 export default function BillingPage() {
   const { profile } = useAuth();
   const [history, setHistory] = useState<BillingHistory[]>([]);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const supabase = createClient();
+  const { addToast } = useToast();
 
   useEffect(() => {
     if (!profile) return;
@@ -27,9 +31,31 @@ export default function BillingPage() {
       });
   }, [profile]);
 
+  // ─── ดาวน์โหลดใบเสร็จ PDF ─────────────────────────────
+  const handleDownloadInvoice = async (billing: BillingHistory) => {
+    if (!profile) return;
+    setDownloadingId(billing.id);
+
+    try {
+      // วิธีที่ 1: ใช้ Client-side jspdf (เร็วกว่า ไม่ต้องโหลด server)
+      const pdfBlob = await generateReceiptPDF(profile, billing, false);
+      const filename = `SubZeed_Receipt_${billing.invoice_number || billing.id}`;
+      downloadInvoice(pdfBlob, filename);
+      addToast('✅ ดาวน์โหลดใบเสร็จสำเร็จ', 'success');
+    } catch (err: any) {
+      console.error('[billing] PDF generation error:', err);
+
+      // วิธีที่ 2: Fallback — เปิดหน้า HTML Invoice แล้วให้ Browser print-to-PDF
+      addToast('กำลังเปิดหน้าใบเสร็จ... กดพิมพ์เพื่อบันทึกเป็น PDF', 'info');
+      window.open(`/api/invoice/${billing.id}/download`, '_blank');
+    }
+    setDownloadingId(null);
+  };
+
   if (!profile) return null;
 
   const tierConfig = TIER_CONFIGS[profile.tier];
+  const canDownloadInvoice = profile.tier === 'business_pro';
 
   return (
     <>
@@ -63,35 +89,58 @@ export default function BillingPage() {
           </div>
 
           {/* History */}
-          <h2 className="text-lg font-semibold mb-4">ประวัติการชำระเงิน</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">ประวัติการชำระเงิน</h2>
+            {canDownloadInvoice && (
+              <span className="text-xs text-success bg-success/10 px-2.5 py-0.5 rounded-full font-medium">
+                ✅ ดาวน์โหลดใบกำกับภาษีได้
+              </span>
+            )}
+          </div>
+
           {history.length === 0 ? (
             <p className="text-center text-text-secondary py-8">ยังไม่มีประวัติ</p>
           ) : (
             <div className="space-y-3">
-              {history.map((item) => (
-                <div key={item.id} className="rounded-lg border border-border bg-white p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">
-                      {item.action_type === 'subscribe' ? 'สมัครแพ็กเกจ' :
-                       item.action_type === 'renew_early' ? 'ต่ออายุ (เติมก่อน)' :
-                       item.action_type === 'recurring' ? 'ต่ออายุอัตโนมัติ' : item.action_type}
-                    </p>
-                    <p className="text-xs text-text-secondary">
-                      {new Date(item.created_at).toLocaleDateString('th-TH')} | {item.previous_tier} → {item.new_tier}
-                    </p>
+              {history.map((item) => {
+                const isDownloading = downloadingId === item.id;
+                return (
+                  <div key={item.id} className="rounded-lg border border-border bg-white p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">
+                        {item.action_type === 'subscribe' ? 'สมัครแพ็กเกจ' :
+                         item.action_type === 'renew_early' ? 'ต่ออายุ (เติมก่อน)' :
+                         item.action_type === 'recurring' ? 'ต่ออายุอัตโนมัติ' : item.action_type}
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        {new Date(item.created_at).toLocaleDateString('th-TH')} | {item.previous_tier} → {item.new_tier}
+                      </p>
+                    </div>
+                    <div className="text-right flex items-center gap-3">
+                      <p className="font-semibold">{item.amount_thb.toLocaleString()}.-</p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDownloadInvoice(item)}
+                        loading={isDownloading}
+                        disabled={isDownloading}
+                      >
+                        {isDownloading ? 'กำลังสร้าง...' : item.invoice_number ? `📄 #${item.invoice_number.slice(0, 8)}` : '📄 ใบเสร็จ'}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{item.amount_thb.toLocaleString()}.-</p>
-                    {item.invoice_number && (
-                      <button className="text-xs text-primary hover:underline">
-                        ใบเสร็จ #{item.invoice_number}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+
+          {/* หมายเหตุ */}
+          <div className="mt-8 rounded-xl border border-border bg-surface p-4 text-xs text-text-secondary">
+            <p className="font-medium mb-1">📌 หมายเหตุเกี่ยวกับเอกสาร</p>
+            <p>• ช่วงยังไม่จด VAT: ใบเสร็จรับเงิน (ไม่มีแถวภาษีมูลค่าเพิ่ม)</p>
+            <p>• ช่วงจด VAT แล้ว: ใบเสร็จรับเงิน / ใบกำกับภาษี (มี VAT 7%)</p>
+            <p>• แพ็กเกจ Business Pro สามารถดาวน์โหลดใบกำกับภาษีเต็มรูปแบบได้</p>
+          </div>
         </div>
       </main>
       <Footer />

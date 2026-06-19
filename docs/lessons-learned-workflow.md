@@ -26,7 +26,7 @@
 - [ ] อ่าน `docs/subzeed-blueprint.md` — ทำความเข้าใจ Big Picture
 - [ ] อ่าน `docs/anti-abuse-fingerprint.md` — ทำความเข้าใจระบบ Anti-Abuse
 - [ ] อ่าน `docs/lessons-learned-workflow.md` — บทเรียน (ไฟล์นี้)
-- [ ] เรียก `ls -R` ดูโครงสร้างไฟล์ที่มีอยู่แล้ว
+- [ ] เรียก `ls` ดูโครงสร้างไฟล์ที่มีอยู่แล้ว
 - [ ] ตรวจสอบว่า `node_modules` และ `.env.local` มีอยู่หรือไม่
 - [ ] ตรวจสอบว่า Supabase schema รันไปยัง belum
 
@@ -45,19 +45,21 @@
 | Studio (Video Editor) | ✅ พร้อม | Drag-drop video + subtitle overlay |
 | Billing History | ✅ พร้อม | `src/app/billing/` |
 | Client Review | ✅ พร้อม | `src/app/review/[token]/` |
-| Stripe Webhook | ✅ พร้อม | `src/app/api/webhooks/stripe/` |
+| Stripe Payment | ✅ พร้อม | Checkout + Webhook + Dev Mode — `docs/payment-stripe.md` |
 | Whisper API | ✅ พร้อม | `src/app/api/transcribe/` |
 | Gemini API | ✅ พร้อม | `src/app/api/gemini-vocab/` |
 | Fingerprint Anti-Abuse | ✅ พร้อม | Migration + Routes + Hook |
 | SQL Schema | ✅ พร้อม | `supabase/` |
+| Admin Dashboard | ✅ พร้อม | 4 tabs + 5 API routes — `docs/admin-dashboard.md` |
+| Invoice PDF Gen | ✅ พร้อม | Client-side jspdf + Server fallback HTML — `docs/invoice-pdf.md` |
 | **FingerprintJS Library** | ⏳ **ยังไม่ติดตั้ง** | ต้อง `npm install @fingerprintjs/fingerprintjs` |
-| **Env Config (.env.local)** | ⏳ **ยังไม่มี** | ต้องตั้งค่า Supabase URL/Keys, OpenAI, Stripe, Gemini |
-| **Admin Dashboard** | ❌ ยังไม่ทำ | หน้าแอดมินดู abuser |
-| **Invoice PDF Gen** | ❌ ยังไม่ทำ | ใช้ pdfkit หรือ jspdf |
-| **Watermark on Free** | ❌ ยังไม่ทำ | Canvas overlay watermark |
-| **Text Animation (Premium)** | ❌ ยังไม่ทำ | Animation engine |
+| **Env Config (.env.local)** | ⏳ **ยังไม่มี** | ดู `docs/env-config.md` |
+| **Watermark on Free** | ✅ พร้อม | Canvas overlay บนวิดีโอ |
+| **Text Animation (Premium)** | ✅ พร้อม | typewriter · slide · highlight |
+| **Audio Extraction** | ✅ พร้อม | `src/lib/audio-extractor.ts` — Client-side WAV 16kHz |
+| **Thai STT Pipeline** | ✅ พร้อม | `transcribe` + `transcribe-and-save` — Quota check + หักอัตโนมัติ |
 | **SRT/VTT Export** | ✅ พร้อม | Export JSON → SRT |
-| **Vercel Deploy Config** | ❌ ยังไม่ทำ | `vercel.json` + env setup |
+| **Vercel Deploy Config** | ✅ พร้อม | `vercel.json` + `docs/env-config.md` |
 
 ---
 
@@ -88,4 +90,4 @@ vercel --prod
 
 ---
 
-_อัปเดตล่าสุด: รอบการพัฒนา SubZeed ครั้งที่ 1_
+_อัปเดตล่าสุด: รอบที่ 2 — STT Pipeline + Watermark + Text Animation + Deploy Config_

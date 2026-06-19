@@ -38,6 +38,16 @@ export function Navbar() {
                 Dashboard
               </Link>
 
+              {/* Admin link — เฉพาะ business_pro หรือ admin */}
+              {profile?.tier === 'business_pro' && (
+                <Link
+                  href="/admin"
+                  className="text-xs rounded-full bg-danger/10 text-danger px-2.5 py-0.5 font-medium hover:bg-danger/20 transition-colors"
+                >
+                  ADMIN
+                </Link>
+              )}
+
               {/* Quota badge */}
               <div className="hidden items-center gap-1 rounded-full bg-primary-light px-3 py-1 text-xs font-medium text-primary md:flex">
                 <span>{tierLabel}</span>

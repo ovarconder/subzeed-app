@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
     '/signup',
     '/pricing',
     '/api/webhooks/stripe',
+    '/api/create-checkout',
     '/review',
     '/_next',
     '/favicon.ico',

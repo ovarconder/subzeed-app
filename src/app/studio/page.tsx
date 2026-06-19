@@ -9,6 +9,7 @@ import { useAuth } from '@/components/auth/auth-provider';
 import { useSubtitleStore } from '@/lib/store/subtitle-store';
 import { useToast } from '@/components/ui/toaster';
 import { TIER_CONFIGS } from '@/lib/types';
+import { extractAudio } from '@/lib/audio-extractor';
 import type { SubtitleEntry } from '@/lib/types';
 
 // Helper: generate unique ID
@@ -23,12 +24,18 @@ export default function StudioPage() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [subtitleText, setSubtitleText] = useState('');
   const [videoDuration, setVideoDuration] = useState(0);
+  const [brandTerms, setBrandTerms] = useState('');
+  const [enableAiVocab, setEnableAiVocab] = useState(false);
+  const [showWatermarkPreview, setShowWatermarkPreview] = useState(false);
 
   // Check quota
   const tierConfig = profile ? TIER_CONFIGS[profile.tier] : TIER_CONFIGS.free;
   const quotaLeft = profile ? profile.quota_minutes_total - profile.quota_minutes_used : 0;
+  const isFree = profile?.tier === 'free';
+  const isPremiumOrUp = profile?.tier === 'premium' || profile?.tier === 'business_starter' || profile?.tier === 'business_pro';
 
   // ---- Video Handling ----
   const handleFileSelect = useCallback((file: File) => {
@@ -62,11 +69,10 @@ export default function StudioPage() {
     if (file) handleFileSelect(file);
   }, [handleFileSelect]);
 
-  // ---- Transcription (STT) ----
+  // ---- Enhanced Transcription (ใช้ audio-extractor + transcribe-and-save) ----
   const handleTranscribe = async () => {
     if (!store.videoFile || !user) return;
 
-    // Check quota
     const estimatedMinutes = Math.ceil(videoDuration / 60);
     if (estimatedMinutes > quotaLeft) {
       addToast('โควตาไม่เพียงพอ กรุณาเติมเงิน', 'error');
@@ -77,61 +83,67 @@ export default function StudioPage() {
     store.setProcessingProgress(0);
 
     try {
-      // Audio extraction via Web Audio API
-      const audioCtx = new AudioContext();
-      const arrayBuffer = await store.videoFile.arrayBuffer();
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      // 1. Extract audio ด้วย library ใหม่
+      const result = await extractAudio(
+        store.videoFile,
+        { targetSampleRate: 16000, normalizeAudio: true },
+        (pct) => store.setProcessingProgress(pct)
+      );
 
-      // Convert to mono WAV (simplified)
-      const numChannels = audioBuffer.numberOfChannels;
-      const sampleRate = audioBuffer.sampleRate;
-      const length = audioBuffer.length;
-      const channelData = audioBuffer.getChannelData(0); // Take left channel
-      
-      // Downsample to 16kHz for Whisper
-      const targetSampleRate = 16000;
-      const ratio = sampleRate / targetSampleRate;
-      const newLength = Math.floor(length / ratio);
-      const resampled = new Float32Array(newLength);
-      
-      for (let i = 0; i < newLength; i++) {
-        const srcIdx = Math.floor(i * ratio);
-        resampled[i] = channelData[srcIdx] || 0;
-      }
-
-      // Encode as WAV
-      const wavBuffer = encodeWav(resampled, targetSampleRate);
-      const audioBlob = new Blob([wavBuffer], { type: 'audio/wav' });
-
-      // Send to API
+      // 2. ส่ง transcribe-and-save (all-in-one)
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'audio.wav');
+      formData.append('audio', result.blob, 'audio.wav');
       formData.append('userId', user.id);
+      formData.append('projectTitle', store.videoFile.name);
+      formData.append('enableAiVocab', enableAiVocab ? 'true' : 'false');
+      formData.append('brandTerms', JSON.stringify(
+        brandTerms.split(',').map(s => s.trim()).filter(Boolean)
+      ));
 
-      const response = await fetch('/api/transcribe', {
+      const response = await fetch('/api/transcribe-and-save', {
         method: 'POST',
         body: formData,
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const err = await response.text();
-        throw new Error(err);
+        if (response.status === 402) {
+          addToast(`โควตาไม่พอ — ต้องการ ${data.needed} นาที`, 'error');
+        } else if (response.status === 403) {
+          addToast('บัญชีถูกระงับชั่วคราว ติดต่อฝ่ายสนับสนุน', 'error');
+        } else {
+          addToast(data.error || 'ถอดความไม่สำเร็จ', 'error');
+        }
+        return;
       }
 
-      const { segments } = await response.json();
-
-      // Convert segments to subtitles
-      const newSubtitles: SubtitleEntry[] = segments.map((seg: any, i: number) => ({
-        id: `sub-${uid()}`,
+      // 3. อัปเดต store
+      const newSubtitles: SubtitleEntry[] = data.subtitles.map((seg: any) => ({
+        id: seg.id,
         start: seg.start,
         end: seg.end,
-        text: seg.text.trim(),
-        position: 'bottom' as const,
-        y_offset: 90,
+        text: seg.text,
+        position: seg.position || 'bottom',
+        y_offset: seg.y_offset ?? 90,
       }));
 
       store.setSubtitles(newSubtitles);
-      addToast(`ถอดความสำเร็จ! ${newSubtitles.length} รายการ`, 'success');
+      store.setCurrentProject({
+        id: data.projectId,
+        user_id: user.id,
+        title: store.videoFile.name,
+        video_url: null,
+        duration_seconds: data.duration,
+        subtitles: newSubtitles,
+        is_client_review_enabled: false,
+        review_token: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const vocabMsg = data.aiVocabApplied ? ' + AI Vocabulary' : '';
+      addToast(`ถอดความสำเร็จ! ${newSubtitles.length} รายการ${vocabMsg}`, 'success');
     } catch (err: any) {
       addToast(`เกิดข้อผิดพลาด: ${err.message}`, 'error');
     } finally {
@@ -188,6 +200,36 @@ export default function StudioPage() {
     return () => vid.removeEventListener('timeupdate', handler);
   }, [store.videoUrl]);
 
+  // ---- Canvas Watermark Overlay (Free tier) ----
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video || !store.videoUrl) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const drawFrame = () => {
+      if (video.paused || video.ended) return;
+
+      canvas.width = video.clientWidth;
+      canvas.height = video.clientHeight;
+
+      if (isFree) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Generated by SubZeed', canvas.width / 2, canvas.height - 20);
+        ctx.restore();
+      }
+      requestAnimationFrame(drawFrame);
+    };
+
+    video.addEventListener('play', drawFrame);
+    return () => video.removeEventListener('play', drawFrame);
+  }, [store.videoUrl, isFree]);
+
   return (
     <>
       <Navbar />
@@ -217,16 +259,44 @@ export default function StudioPage() {
                   a.download = 'subtitles.srt';
                   a.click();
                 }}>
-                  ⬇️ โหลด .srt
+                  ⬇️ .srt
                 </Button>
               </>
             )}
-            <div className="ml-auto text-sm text-text-secondary">
+
+            {/* AI Vocab Toggle (Premium+) */}
+            {isPremiumOrUp && (
+              <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableAiVocab}
+                  onChange={(e) => setEnableAiVocab(e.target.checked)}
+                  className="accent-primary"
+                />
+                AI Vocab
+              </label>
+            )}
+
+            {/* Brand Terms Input */}
+            {enableAiVocab && (
+              <input
+                type="text"
+                value={brandTerms}
+                onChange={(e) => setBrandTerms(e.target.value)}
+                placeholder="คำแบรนด์ (เช่น SubZeed, CP)"
+                className="w-40 rounded border border-border px-2 py-1 text-xs"
+              />
+            )}
+
+            <div className="ml-auto text-sm text-text-secondary flex items-center gap-3">
+              {isFree && (
+                <span className="text-xs text-warning">🔒 ลายน้ำ</span>
+              )}
               {quotaLeft.toFixed(1)} / {profile?.quota_minutes_total || 20} นาที
             </div>
           </div>
 
-          {/* Video + Subtitles Area */}
+          {/* Video + Subtitles + Watermark Area */}
           <div
             className="relative flex-1 bg-black flex items-center justify-center"
             onDragOver={(e) => e.preventDefault()}
@@ -240,14 +310,24 @@ export default function StudioPage() {
                   controls
                   className="max-w-full max-h-full"
                 />
+                {/* Canvas for Watermark overlay (Free tier) */}
+                <canvas
+                  ref={canvasRef}
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ width: '100%', height: '100%' }}
+                />
                 {/* Subtitle Overlay */}
                 {currentSub && (
                   <div
-                    className="subtitle-overlay subtitle-animate"
-                    style={{ bottom: `${currentSub.y_offset}%` }}
+                    className="subtitle-overlay"
+                    style={{
+                      bottom: `${currentSub.y_offset}%`,
+                      animation: store.currentTime >= currentSub.start ? 'subtitleFadeIn 0.2s ease-out' : 'none',
+                    }}
                   >
                     <span
                       className="inline-block bg-black/60 px-4 py-2 rounded-lg text-white text-xl"
+                      style={{ fontFamily: tierConfig.fonts[0] || 'Arial' }}
                     >
                       {currentSub.text}
                     </span>
@@ -270,7 +350,13 @@ export default function StudioPage() {
                       <div key={i} className="w-2 bg-primary rounded-full wave-bar" style={{ animationDelay: `${d}s` }} />
                     ))}
                   </div>
-                  <p>กำลังถอดความเสียง...</p>
+                  <p className="mb-2">กำลังถอดความเสียง {store.processingProgress}%</p>
+                  <div className="w-48 h-1.5 bg-white/20 rounded-full mx-auto overflow-hidden">
+                    <div
+                      className="h-full bg-primary rounded-full transition-all"
+                      style={{ width: `${store.processingProgress}%` }}
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -335,43 +421,4 @@ export default function StudioPage() {
       </main>
     </>
   );
-}
-
-// ---- WAV Encoder ----
-function encodeWav(samples: Float32Array, sampleRate: number): ArrayBuffer {
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const byteRate = sampleRate * numChannels * bitsPerSample / 8;
-  const blockAlign = numChannels * bitsPerSample / 8;
-  const dataSize = samples.length * blockAlign;
-  const bufferSize = 44 + dataSize;
-
-  const buffer = new ArrayBuffer(bufferSize);
-  const view = new DataView(buffer);
-
-  const writeStr = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  };
-  writeStr(0, 'RIFF');
-  view.setUint32(4, bufferSize - 8, true);
-  writeStr(8, 'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-  writeStr(36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  let offset = 44;
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-    offset += 2;
-  }
-
-  return buffer;
 }

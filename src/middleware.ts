@@ -13,6 +13,7 @@ export async function middleware(request: NextRequest) {
     '/api/webhooks/stripe',
     '/api/create-checkout',
     '/api/auth/callback',
+    '/api/admin/initialize',
     '/review',
     '/_next',
     '/favicon.ico',

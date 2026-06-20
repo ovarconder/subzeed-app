@@ -2,10 +2,7 @@
 
 @theme inline {
   --color-background: var(--background);
-
-
   --font-mono: var(--font-geist-mono);
-
 
   --color-background: #ffffff;
   --color-foreground: #0f172a;
@@ -24,6 +21,28 @@
   --color-muted: #94a3b8;
 }
 
+/* ============================================================
+   🌐 CSS Custom Properties — ใช้ร่วมกับ src/lib/site-config.ts
+   เปลี่ยนค่าที่ site-config.ts → สะท้อนทั้งเว็บ
+   ============================================================ */
+:root {
+  --sz-primary: #2563eb;
+  --sz-primary-dark: #1d4ed8;
+  --sz-primary-light: #dbeafe;
+  --sz-background: #ffffff;
+  --sz-foreground: #0f172a;
+  --sz-surface: #f8fafc;
+  --sz-border: #e2e8f0;
+  --sz-text: #1e293b;
+  --sz-text-secondary: #64748b;
+  --sz-muted: #94a3b8;
+  --sz-success: #10b981;
+  --sz-warning: #f59e0b;
+  --sz-danger: #ef4444;
+  --sz-hero-gradient: linear-gradient(135deg, #2563eb 0%, #8b5cf6 50%, #06b6d4 100%);
+  --sz-card-gradient: linear-gradient(135deg, #dbeafe 0%, #ede9fe 100%);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -31,25 +50,19 @@
   }
 }
 
-
-
 body {
-  background: var(--color-background);
-  color: var(--color-text);
-  font-family: var(--font-sans, Arial, Helvetica, sans-serif);
-  color: var(--foreground);
+  background: var(--sz-background);
+  color: var(--sz-text);
   font-family: Arial, Helvetica, sans-serif;
 }
 
-
-
+/* ─── Scrollbar ────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
+::-webkit-scrollbar-thumb { background: var(--sz-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--sz-muted); }
 
-/* Subtitle overlay on video */
-/* ─── Subtitle Overlay ──────────────────────────────── */
+/* ─── Subtitle Overlay ─────────────────────────────── */
 .subtitle-overlay {
   position: absolute;
   left: 0;
@@ -60,21 +73,19 @@ body {
   z-index: 10;
 }
 
-/* ─── Fade In ──────────────────────────────────────── */
+/* ─── Animations ───────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-in { animation: fadeIn 0.2s ease-out; }
 
-/* ─── Slide In (จากขวา) ────────────────────────────── */
 @keyframes slideIn {
   from { opacity: 0; transform: translateX(30px); }
   to { opacity: 1; transform: translateX(0); }
 }
 .animate-slide-in { animation: slideIn 0.3s ease-out; }
 
-/* ─── Typewriter cursor blink ──────────────────────── */
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
@@ -88,7 +99,7 @@ body {
 .wave-bar { animation: wave 1.2s ease-in-out infinite; }
 
 .skeleton {
-  background: linear-gradient(90deg, var(--color-border) 25%, #f1f5f9 50%, var(--color-border) 75%);
+  background: linear-gradient(90deg, var(--sz-border) 25%, #f1f5f9 50%, var(--sz-border) 75%);
   background-size: 200% 100%;
   animation: skeleton-loading 1.5s infinite;
 }

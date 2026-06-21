@@ -33,10 +33,14 @@ export function SocialLogin() {
 
     const redirect = searchParams.get('redirect') || '/dashboard';
 
+    // หา base path เช่น /subzeed (กรณี deploy ไม่ใช่ root)
+    const basePath = window.location.pathname.replace(/\/login|\/signup|\/$/, '');
+    const callbackPath = `${basePath}/api/auth/callback`;
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?redirect=${redirect}`,
+        redirectTo: `${window.location.origin}${callbackPath}?redirect=${redirect}`,
       },
     });
 

@@ -33,7 +33,7 @@ export function SocialLogin() {
 
     const redirect = searchParams.get('redirect') || '/dashboard';
 
-    // หา base path เช่น /subzeed
+    // หา base path เช่น /subzeed (กรณี deploy ไม่ใช่ root)
     const basePath = window.location.pathname.replace(/\/login|\/signup|\/$/, '');
     const callbackPath = `${basePath}/api/auth/callback`;
 
@@ -43,10 +43,15 @@ export function SocialLogin() {
       baseUrl = 'https://www.overconda.space';
     }
 
+    // redirectTo ต้องตรงกับ Authorized redirect URIs ทุกประการ (ไม่มี query string)
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${baseUrl}${callbackPath}?redirect=${redirect}`,
+        redirectTo: `${baseUrl}${callbackPath}`,
+        // ใช้ queryParams เพื่อส่ง redirect ไปต่อ
+        queryParams: {
+          redirect_to: redirect,
+        },
       },
     });
 

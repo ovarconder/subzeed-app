@@ -12,7 +12,9 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin, pathname } = new URL(request.url);
 
   const code = searchParams.get('code');
-  const next = searchParams.get('redirect') || '/dashboard';
+  // redirect_to ส่งผ่าน queryParams ของ OAuth provider
+  const redirectTo = searchParams.get('redirect_to');
+  const next = searchParams.get('redirect') || redirectTo || '/dashboard';
 
   // base path: /subzeed หรือ / (ถ้า root)
   const basePath = pathname.replace(/\/api\/auth\/callback\/?$/, '');

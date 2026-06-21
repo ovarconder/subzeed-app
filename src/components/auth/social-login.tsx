@@ -33,14 +33,20 @@ export function SocialLogin() {
 
     const redirect = searchParams.get('redirect') || '/dashboard';
 
-    // หา base path เช่น /subzeed (กรณี deploy ไม่ใช่ root)
+    // หา base path เช่น /subzeed
     const basePath = window.location.pathname.replace(/\/login|\/signup|\/$/, '');
     const callbackPath = `${basePath}/api/auth/callback`;
+
+    // ใช้ www.overconda.space เสมอ ป้องกัน state mismatch
+    let baseUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+    if (baseUrl.includes('overconda.space') && !baseUrl.includes('www.')) {
+      baseUrl = 'https://www.overconda.space';
+    }
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}${callbackPath}?redirect=${redirect}`,
+        redirectTo: `${baseUrl}${callbackPath}?redirect=${redirect}`,
       },
     });
 

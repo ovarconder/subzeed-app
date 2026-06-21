@@ -37,9 +37,10 @@ export function SocialLogin() {
     const basePath = window.location.pathname.replace(/\/login|\/signup|\/$/, '');
     const callbackPath = `${basePath}/api/auth/callback`;
 
-    // ใช้ www.overconda.space เสมอ ป้องกัน state mismatch
+    // ใช้ www.overconda.space เสมอ (กรณี production)
     let baseUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
-    if (baseUrl.includes('overconda.space') && !baseUrl.includes('www.')) {
+    // ถ้าเป็น production domain subzeed-app.vercel.app → เปลี่ยนเป็น overconda.space
+    if (baseUrl.includes('vercel.app') || (baseUrl.includes('overconda.space') && !baseUrl.includes('www.'))) {
       baseUrl = 'https://www.overconda.space';
     }
 

@@ -33,22 +33,12 @@ export function SocialLogin() {
 
     const redirect = searchParams.get('redirect') || '/dashboard';
 
-    // === ใช้ redirectTo URL ที่ตรงกับ Authorized redirect URIs ใน Supabase Dashboard ===
-    // โปรเจกต์นี้ deploy แยกจากเว็บหลัก (overconda.space)
-    // เว็บหลักมี Rewrite Rule ส่ง /subzeed/* → Vercel project นี้
-    // Next.js ใช้ basePath: "/subzeed" (next.config.ts)
-    //
-    // ดังนั้น callback route จริงคือ:
-    //   https://overconda.space/subzeed/api/auth/callback
-    //
-    // ต้องใส่ /subzeed ใน path ด้วย ไม่เช่นนั้นเว็บหลักรับ request นี้แล้ว 404
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
-    const redirectTo = `${siteUrl}/subzeed/api/auth/callback`;
-
+    // === Supabase Auth จะใช้ค่า Site URL จาก Supabase Dashboard ประกอบ redirect_uri เอง ===
+    // ไม่ต้องส่ง redirectTo ใน options — ให้ Supabase ใช้ค่าเริ่มต้นจาก Site URL
+    // Site URL ใน Supabase Dashboard ต้องตั้งเป็น https://overconda.space/subzeed
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo,
         queryParams: {
           redirect_to: redirect,
         },
@@ -83,4 +73,3 @@ export function SocialLogin() {
     </div>
   );
 }
-

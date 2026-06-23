@@ -38,7 +38,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check auth
+  // ------------------------------------------------------------------
+  // Supabase SSR Middleware Pattern:
+  // 1. สร้าง response ก่อน (เพื่อใช้ใน setAll)
+  // 2. update ทั้ง request.cookies และ response.cookies
+  // 3. return response ที่อัปเดตแล้ว
+  // ------------------------------------------------------------------
+  const response = NextResponse.next({ request });
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -48,9 +55,12 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            // update request cookies (สำหรับอ่านใน request ถัดไป)
+            request.cookies.set(name, value);
+            // update response cookies (สำหรับส่งกลับไปให้ Browser)
+            response.cookies.set(name, value, options);
+          });
         },
       },
     }
@@ -67,7 +77,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {

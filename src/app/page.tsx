@@ -1,12 +1,38 @@
 'use client';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Navbar } from '@/components/layout/navbar';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import siteConfig from '@/lib/site-config';
+import { createClient } from '@/lib/supabase/client';
 
 export default function HomePage() {
   const { theme, homepage } = siteConfig;
+  const router = useRouter();
+  const supabase = createClient();
+
+  // ─── รับ OAuth callback (code) โดยตรงที่ root page ───
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const redirectTo = params.get('redirect_to') || '/dashboard';
+
+    if (code) {
+      // แลก code → session
+      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+        if (error) {
+          console.error('[auth] exchangeCode error:', error);
+          router.push(`/login?error=auth_failed`);
+        } else {
+          // ลบ query params แล้ว redirect
+          window.history.replaceState({}, '', window.location.pathname);
+          router.push(redirectTo);
+        }
+      });
+    }
+  }, [router, supabase.auth]);
 
   return (
     <>

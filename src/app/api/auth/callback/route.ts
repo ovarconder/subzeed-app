@@ -9,7 +9,7 @@ import { cookies } from 'next/headers';
  * แลก code → session แล้ว redirect ไปหน้าที่ต้องการ
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin, pathname } = new URL(request.url);
+  const { searchParams, pathname } = new URL(request.url);
 
   const code = searchParams.get('code');
   // redirect_to ส่งผ่าน queryParams ของ OAuth provider
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const basePath = pathname.replace(/\/api\/auth\/callback\/?$/, '');
 
   if (!code) {
-    return NextResponse.redirect(`${origin}${basePath}/login?error=missing_code`);
+    return NextResponse.redirect(`${getActualOrigin(request)}${basePath}/login?error=missing_code`);
   }
 
   const cookieStore = await cookies();
@@ -44,16 +44,25 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    return NextResponse.redirect(`${origin}${basePath}/login?error=auth_failed`);
+    console.error('[auth/callback] exchangeCodeForSession error:', error.message);
+    return NextResponse.redirect(`${getActualOrigin(request)}${basePath}/login?error=auth_failed`);
   }
 
   // ถ้า redirect path ขึ้นต้นด้วย /subzeed ให้ตัดออก (กันซ้ำ)
   const cleanNext = next.startsWith(basePath) ? next : `${basePath}${next}`;
-  const forceUrl = searchParams.get('force_url');
+  const actualOrigin = getActualOrigin(request);
 
-  if (forceUrl) {
-    return NextResponse.redirect(forceUrl);
-  }
+  return NextResponse.redirect(`${actualOrigin}${cleanNext}`);
+}
 
-  return NextResponse.redirect(`${origin}${cleanNext}`);
+/**
+ * ดึง Origin จริงจาก headers (ป้องกัน cookie หลุดโดเมนเวลา Vercel Rewrite)
+ *
+ * Vercel Rewrite มักทำให้ request.url มี origin ไม่ตรง
+ * ต้องใช้ x-forwarded-proto + host headers แทน
+ */
+function getActualOrigin(request: NextRequest): string {
+  const proto = request.headers.get('x-forwarded-proto') || 'https';
+  const host = request.headers.get('host') || 'www.overconda.space';
+  return `${proto}://${host}`;
 }

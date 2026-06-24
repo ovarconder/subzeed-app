@@ -1,40 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-
 /**
  * GET /auth/callback
  *
  * Supabase OAuth callback — รับ redirect กลับจาก Google/Facebook
  * แลก code → session แล้ว redirect ไปหน้าที่ต้องการ
  *
- * สำคัญ: SITE_ORIGIN ต้องตรงกับที่ browser เรียก callback นี้
- * เพราะ cookie Supabase Auth จะถูก set สำหรับ domain นั้น
- * ถ้า SITE_ORIGIN ไม่ตรงกับ browser URL → cookie หลุดโดเมน
+ * ─── เรื่อง Origin และ Cookie ──────────────────────────────
+ * cookie Supabase Auth จะถูก set สำหรับ domain ที่ request นี้ถูกเรียก
+ * ต้องแน่ใจว่า origin ที่ redirect ไปกลับ ตรงกับ domain ที่ browser เรียก
+ * และตรงกับ domain ที่ cookie ถูก set
  *
- * วิธีหา SITE_ORIGIN: ใช้ host headers จาก request ที่เรียก callback นี้
- * (ไม่ใช่ NEXT_PUBLIC_SITE_URL เพราะอาจต่างกันเรื่อง www/no-www)
+ * IMPORTANT: ใช้ NEXT_PUBLIC_SITE_URL จาก env เป็นหลัก (ไม่ใช้ host header)
+ * เพราะ:
+ *   - host header อาจเป็น subzeed-app.vercel.app (Vercel internal routing)
+ *   - แต่ user จริงเรียกผ่าน overconda.space
+ *   - cookie ต้องตรงกับ domain จริงที่ browser ใช้
+ *
+ * NEXT_PUBLIC_SITE_URL = https://overconda.space (ไม่มี www, ไม่มี trailing slash)
+ * redirector = SITE_ORIGIN + basePath + nextPath
+ *   = https://overconda.space + /subzeed + /dashboard
+ *   = https://overconda.space/subzeed/dashboard
  */
+const SITE_ORIGIN = (process.env.NEXT_PUBLIC_SITE_URL || 'https://overconda.space').replace(/\/+$/, '');
+
 export async function GET(request: NextRequest) {
   const { searchParams, pathname } = new URL(request.url);
 
   const code = searchParams.get('code');
-  // redirect_to ส่งผ่าน queryParams ของ OAuth provider
   const redirectTo = searchParams.get('redirect_to');
   const next = searchParams.get('redirect') || redirectTo || '/dashboard';
 
   // base path: /subzeed หรือ / (ถ้า root)
   const basePath = pathname.replace(/\/api\/auth\/callback\/?$/, '');
 
-  // === ดึง Origin จาก request headers ===
-  // ใช้ x-forwarded-proto + host เพื่อให้ตรงกับ domain ที่ browser เรียก
-  // (สำคัญ: cookie ต้องตรง domain กับ browser URL)
+  // === หา origin จริงจาก request headers ===
+  // cookie ถูก set โดย Supabase ตาม host header ที่ callback นี้เรียก
+  // ดังนั้นต้อง redirect กลับไปที่ host เดียวกันเท่านั้น
   const proto = request.headers.get('x-forwarded-proto') || 'https';
   const host = request.headers.get('host') || 'overconda.space';
   const origin = `${proto}://${host}`;
 
   if (!code) {
-    return NextResponse.redirect(`${origin}${basePath}/login?error=missing_code`);
+    return NextResponse.redirect(`${SITE_ORIGIN}${basePath}/login?error=missing_code`);
   }
 
   const cookieStore = await cookies();
@@ -59,11 +65,12 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[auth/callback] exchangeCodeForSession error:', error.message);
-    return NextResponse.redirect(`${origin}${basePath}/login?error=auth_failed`);
+    return NextResponse.redirect(`${SITE_ORIGIN}${basePath}/login?error=auth_failed`);
   }
 
   // ถ้า redirect path ขึ้นต้นด้วย /subzeed ให้ตัดออก (กันซ้ำ)
   const cleanNext = next.startsWith(basePath) ? next : `${basePath}${next}`;
 
-  return NextResponse.redirect(`${origin}${cleanNext}`);
+  return NextResponse.redirect(`${SITE_ORIGIN}${cleanNext}`);
 }
+

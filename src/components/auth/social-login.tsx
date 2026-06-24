@@ -33,12 +33,26 @@ export function SocialLogin() {
 
     const redirect = searchParams.get('redirect') || '/dashboard';
 
-    // === Supabase Auth จะใช้ค่า Site URL จาก Supabase Dashboard ประกอบ redirect_uri เอง ===
-    // ไม่ต้องส่ง redirectTo ใน options — ให้ Supabase ใช้ค่าเริ่มต้นจาก Site URL
-    // Site URL ใน Supabase Dashboard ต้องตั้งเป็น https://overconda.space/subzeed
+    // === redirectTo: URL ที่ Supabase จะ redirect กลับมาหลังจาก authenticate สำเร็จ ===
+    // จริง ๆ แล้ว redirect_uri (ที่ Google ใช้) กับ redirectTo นี้เป็นคนละค่ากัน
+    // redirect_uri = Supabase hosted callback (supabase.co/auth/v1/callback)
+    // redirectTo = URL ที่ Supabase จะ redirect user กลับมาหลังจากแลก code→session สำเร็จ
+    //
+    // flow: Google → supabase.co/auth/v1/callback → (แลก code) → redirectTo → app เรา
+    //
+    // แต่เพราะ app เราใช้ basePath: "/subzeed" และ deploy ภายใต้ Vercel project แยก
+    // callback route ของเราคือ /subzeed/api/auth/callback
+    // แต่ถ้าใช้ hosted callback Supabase จะ redirect กลับมาที่ /api/auth/callback โดยไม่สน basePath
+    //
+    // ทางออก: ใช้ PKCE flow ที่ Supabase redirect กลับมาที่ callback route ของเราโดยตรง
+    // redirectTo = https://overconda.space/subzeed/api/auth/callback
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+    const redirectTo = `${siteUrl}/subzeed/api/auth/callback`;
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
+        redirectTo,
         queryParams: {
           redirect_to: redirect,
         },

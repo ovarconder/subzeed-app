@@ -51,15 +51,18 @@ export function SocialLogin() {
 
 
 
-    // callback route จริงของ app นี้คือ https://www.overconda.space/subzeed/api/auth/callback
-    // (เว็บหลักมี www. เสมอ)
-    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)
-
-
-
-
-      .replace(/\/+$/, '');          // ตัด trailing slash เท่านั้น
-    const redirectTo = `${siteUrl}/subzeed/api/auth/callback`;
+    // === ใช้ window.location.origin (URL จริงใน browser) สร้าง redirectTo ===
+    // วิธีนี้ป้องกันปัญหา:
+    //   - www/no-www ไม่ตรงกัน
+    //   - env NEXT_PUBLIC_SITE_URL ไม่ตรงกับที่ browser เรียก
+    //   - path /subzeed ซ้อน
+    //
+    // window.location.origin = https://www.overconda.space (หรือ http://localhost:3000)
+    // url ที่ browser เรียก = https://www.overconda.space/subzeed/login
+    //
+    // redirectTo = origin + /subzeed/api/auth/callback
+    const baseUrl = window.location.origin;
+    const redirectTo = `${baseUrl}/subzeed/api/auth/callback`;
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider,

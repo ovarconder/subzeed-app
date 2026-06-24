@@ -9,6 +9,12 @@ export const createServerSupabase = async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        domain: 'overconda.space', // apex domain → ตรงกับ client.ts
+        path: '/',
+        sameSite: 'lax' as const,
+        secure: true,
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll();

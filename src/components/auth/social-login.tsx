@@ -35,16 +35,10 @@ export function SocialLogin() {
 
     const redirect = searchParams.get('redirect') || '/dashboard';
 
-    // ใช้ window.location.origin (domain จริงที่ browser เห็น)
-    // ใช้ window.location.pathname หา basePath แบบ dynamic ไม่ต้อง hardcode
+    // ใช้ window.location.origin (domain จริงที่ browser เห็น เช่น https://www.overconda.space)
+    // BASE_PATH fix จาก env ไม่ต้อง derive จาก pathname เพราะ Vercel rewrite strip /subzeed ออก
     const origin = window.location.origin;
-    const pathParts = window.location.pathname.split('/');
-    // /subzeed/login → ['', 'subzeed', 'login'] → basePath = '/subzeed'
-    // /login         → ['', 'login']            → basePath = ''
-    const basePath = pathParts.length > 2 && pathParts[1] !== 'login' && pathParts[1] !== 'dashboard'
-      ? `/${pathParts[1]}`
-      : '';
-
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '/subzeed';
     const redirectTo = `${origin}${basePath}/api/auth/callback`;
 
     const { error } = await supabase.auth.signInWithOAuth({
@@ -84,4 +78,3 @@ export function SocialLogin() {
     </div>
   );
 }
-

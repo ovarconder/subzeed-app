@@ -1,29 +1,42 @@
-// route.ts
+/**
+ * GET /api/auth/callback
+ *
+ * Supabase OAuth callback — รับ redirect กลับจาก Google/Facebook
+ * แลก code → session แล้ว redirect ไปหน้าที่ต้องการ
+ *
+ * ─── เรื่อง basePath ──────────────────────────────────────────
+ * Vercel rewrite จาก overconda.space/subzeed/* → subzeed-app.vercel.app/*
+ * ทำให้ pathname ที่ callback เห็นจริงๆ คือ /api/auth/callback
+ * ไม่ใช่ /subzeed/api/auth/callback
+ *
+ * ดังนั้น derive basePath จาก pathname ไม่ได้ → ใช้ env NEXT_PUBLIC_BASE_PATH แทน
+ *
+ * ─── Environment Variables ────────────────────────────────────
+ * NEXT_PUBLIC_SITE_URL  = https://www.overconda.space  (origin เท่านั้น ไม่มี path)
+ * NEXT_PUBLIC_BASE_PATH = /subzeed
+ *
+ * ─── Flow ────────────────────────────────────────────────────
+ * Google → supabase.co/auth/v1/callback → (แลก code) → callback route นี้
+ * → exchangeCodeForSession → set cookie → redirect ไป SITE_ORIGIN + BASE_PATH + next
+ * = https://www.overconda.space/subzeed/dashboard
+ */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-/**
- * SITE_ORIGIN = origin เท่านั้น ไม่มี path ต่อท้าย
- * basePath จะถูก derive จาก pathname ของ request เอง
- */
 const SITE_ORIGIN = (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.overconda.space').replace(/\/+$/, '');
+const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || '/subzeed').replace(/\/+$/, '');
 
 export async function GET(request: NextRequest) {
-  const { searchParams, pathname } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
 
   const code = searchParams.get('code');
   const redirectTo = searchParams.get('redirect_to');
   const next = searchParams.get('redirect') || redirectTo || '/dashboard';
 
-  // derive basePath จาก pathname จริง
-  // pathname = /subzeed/api/auth/callback → basePath = /subzeed
-  // pathname = /api/auth/callback         → basePath = ""
-  const basePath = pathname.replace(/\/api\/auth\/callback\/?$/, '');
-
   if (!code) {
-    return NextResponse.redirect(`${SITE_ORIGIN}${basePath}/login?error=missing_code`);
+    return NextResponse.redirect(`${SITE_ORIGIN}${BASE_PATH}/login?error=missing_code`);
   }
 
   const cookieStore = await cookies();
@@ -32,13 +45,17 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return cookieStore.getAll(); },
+        getAll() {
+          return cookieStore.getAll();
+        },
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             );
-          } catch { /* Server Component context */ }
+          } catch {
+            // Server Component context — ignore
+          }
         },
       },
     }
@@ -48,16 +65,12 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[auth/callback] exchangeCodeForSession error:', error.message);
-    return NextResponse.redirect(`${SITE_ORIGIN}${basePath}/login?error=auth_failed`);
+    return NextResponse.redirect(`${SITE_ORIGIN}${BASE_PATH}/login?error=auth_failed`);
   }
 
-  // สร้าง redirect path โดยไม่ให้ basePath ซ้ำกัน
-  // next อาจมาเป็น "/dashboard" หรือ "/subzeed/dashboard" ก็ได้
-  const nextWithoutBase = next.startsWith(basePath)
-    ? next.slice(basePath.length)
-    : next;
-  // normalize ให้ขึ้นต้นด้วย /
-  const cleanNext = nextWithoutBase.startsWith('/') ? nextWithoutBase : `/${nextWithoutBase}`;
+  // กัน double basePath: next อาจมาเป็น "/dashboard" หรือ "/subzeed/dashboard"
+  const cleanNext = next.startsWith(BASE_PATH) ? next.slice(BASE_PATH.length) : next;
+  const finalPath = cleanNext.startsWith('/') ? cleanNext : `/${cleanNext}`;
 
-  return NextResponse.redirect(`${SITE_ORIGIN}${basePath}${cleanNext}`);
+  return NextResponse.redirect(`${SITE_ORIGIN}${BASE_PATH}${finalPath}`);
 }

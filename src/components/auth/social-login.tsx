@@ -28,41 +28,24 @@ export function SocialLogin() {
   const supabase = createClient();
   const { addToast } = useToast();
 
+
+  // code from Claude
   const handleSocialLogin = async (provider: Provider) => {
     setLoading(provider);
 
     const redirect = searchParams.get('redirect') || '/dashboard';
 
+    // ใช้ window.location.origin (domain จริงที่ browser เห็น)
+    // ใช้ window.location.pathname หา basePath แบบ dynamic ไม่ต้อง hardcode
+    const origin = window.location.origin;
+    const pathParts = window.location.pathname.split('/');
+    // /subzeed/login → ['', 'subzeed', 'login'] → basePath = '/subzeed'
+    // /login         → ['', 'login']            → basePath = ''
+    const basePath = pathParts.length > 2 && pathParts[1] !== 'login' && pathParts[1] !== 'dashboard'
+      ? `/${pathParts[1]}`
+      : '';
 
-
-
-
-    // === redirectTo: URL ที่ Supabase จะ redirect กลับมาหลังจาก hosted callback แลก session สำเร็จ ===
-    //
-
-    // flow: Google → supabase.co/auth/v1/callback → (แลก code → session) → redirectTo → app
-    //
-
-
-
-
-
-
-
-
-
-    // === ใช้ window.location.origin (URL จริงใน browser) สร้าง redirectTo ===
-    // วิธีนี้ป้องกันปัญหา:
-    //   - www/no-www ไม่ตรงกัน
-    //   - env NEXT_PUBLIC_SITE_URL ไม่ตรงกับที่ browser เรียก
-    //   - path /subzeed ซ้อน
-    //
-    // window.location.origin = https://www.overconda.space (หรือ http://localhost:3000)
-    // url ที่ browser เรียก = https://www.overconda.space/subzeed/login
-    //
-    // redirectTo = origin + /subzeed/api/auth/callback
-    const baseUrl = window.location.origin;
-    const redirectTo = `${baseUrl}/subzeed/api/auth/callback`;
+    const redirectTo = `${origin}${basePath}/api/auth/callback`;
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -78,7 +61,6 @@ export function SocialLogin() {
       addToast(`เข้าสู่ระบบด้วย ${provider} ล้มเหลว: ${error.message}`, 'error');
       setLoading(null);
     }
-    // ถ้าสำเร็จ browser จะ redirect ไปหน้า OAuth provider
   };
 
   return (

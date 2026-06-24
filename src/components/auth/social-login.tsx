@@ -33,20 +33,32 @@ export function SocialLogin() {
 
     const redirect = searchParams.get('redirect') || '/dashboard';
 
-    // === redirectTo: URL ที่ Supabase จะ redirect กลับมาหลังจาก authenticate สำเร็จ ===
-    // จริง ๆ แล้ว redirect_uri (ที่ Google ใช้) กับ redirectTo นี้เป็นคนละค่ากัน
-    // redirect_uri = Supabase hosted callback (supabase.co/auth/v1/callback)
-    // redirectTo = URL ที่ Supabase จะ redirect user กลับมาหลังจากแลก code→session สำเร็จ
+
+
+
+
+    // === redirectTo: URL ที่ Supabase จะ redirect กลับมาหลังจาก hosted callback แลก session สำเร็จ ===
     //
-    // flow: Google → supabase.co/auth/v1/callback → (แลก code) → redirectTo → app เรา
+
+    // flow: Google → supabase.co/auth/v1/callback → (แลก code → session) → redirectTo → app
     //
-    // แต่เพราะ app เราใช้ basePath: "/subzeed" และ deploy ภายใต้ Vercel project แยก
-    // callback route ของเราคือ /subzeed/api/auth/callback
-    // แต่ถ้าใช้ hosted callback Supabase จะ redirect กลับมาที่ /api/auth/callback โดยไม่สน basePath
-    //
-    // ทางออก: ใช้ PKCE flow ที่ Supabase redirect กลับมาที่ callback route ของเราโดยตรง
-    // redirectTo = https://overconda.space/subzeed/api/auth/callback
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+
+
+
+
+
+
+
+
+
+    // callback route จริงของ app นี้คือ https://www.overconda.space/subzeed/api/auth/callback
+    // (เว็บหลักมี www. เสมอ)
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || window.location.origin)
+
+
+
+
+      .replace(/\/+$/, '');          // ตัด trailing slash เท่านั้น
     const redirectTo = `${siteUrl}/subzeed/api/auth/callback`;
 
     const { error } = await supabase.auth.signInWithOAuth({
@@ -87,3 +99,4 @@ export function SocialLogin() {
     </div>
   );
 }
+

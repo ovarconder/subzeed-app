@@ -1,7 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-
 /**
  * GET /auth/callback
  *
@@ -20,7 +16,7 @@ export async function GET(request: NextRequest) {
   const basePath = pathname.replace(/\/api\/auth\/callback\/?$/, '');
 
   if (!code) {
-    return NextResponse.redirect(`${getActualOrigin(request)}${basePath}/login?error=missing_code`);
+    return NextResponse.redirect(`${SITE_ORIGIN}${basePath}/login?error=missing_code`);
   }
 
   const cookieStore = await cookies();
@@ -45,24 +41,25 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[auth/callback] exchangeCodeForSession error:', error.message);
-    return NextResponse.redirect(`${getActualOrigin(request)}${basePath}/login?error=auth_failed`);
+    return NextResponse.redirect(`${SITE_ORIGIN}${basePath}/login?error=auth_failed`);
   }
 
   // ถ้า redirect path ขึ้นต้นด้วย /subzeed ให้ตัดออก (กันซ้ำ)
   const cleanNext = next.startsWith(basePath) ? next : `${basePath}${next}`;
-  const actualOrigin = getActualOrigin(request);
 
-  return NextResponse.redirect(`${actualOrigin}${cleanNext}`);
+  return NextResponse.redirect(`${SITE_ORIGIN}${cleanNext}`);
 }
 
 /**
- * ดึง Origin จริงจาก headers (ป้องกัน cookie หลุดโดเมนเวลา Vercel Rewrite)
+ * Origin ของเว็บ — ดึงจาก NEXT_PUBLIC_SITE_URL หรือ fallback จาก headers
  *
- * Vercel Rewrite มักทำให้ request.url มี origin ไม่ตรง
- * ต้องใช้ x-forwarded-proto + host headers แทน
+ * ใช้ NEXT_PUBLIC_SITE_URL เป็นหลัก เพราะ host headers อาจเปลี่ยนตาม Rewrite
+ * เช่น overconda.space → www.overconda.space ทำให้ cookie หลุดโดเมน
  */
-function getActualOrigin(request: NextRequest): string {
-  const proto = request.headers.get('x-forwarded-proto') || 'https';
-  const host = request.headers.get('host') || 'www.overconda.space';
-  return `${proto}://${host}`;
-}
+const SITE_ORIGIN: string = (() => {
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/+$/, '');
+  }
+  // Fallback: ไม่ควรถึงจุดนี้เพราะ Vercel ต้องมี env นี้
+  return 'https://overconda.space';
+})();

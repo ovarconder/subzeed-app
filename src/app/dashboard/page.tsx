@@ -18,19 +18,22 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
-  // ─── Super Admin → redirect to /admin ────────────────
+  // ─── Super Admin → redirect to /admin ──────────────
   useEffect(() => {
     if (profile?.is_super_admin) {
-      router.replace('/admin');
+      window.location.href = '/admin?tab=settings';
     }
-  }, [profile, router]);
+  }, [profile]);
 
   useEffect(() => {
-    if (!profile || profile.is_super_admin) return;
+    if (!profile || profile.is_super_admin) {
+      setLoading(false);
+      return;
+    }
     supabase
       .from('projects')
       .select('*')
-      .eq('user_id', profile.id)
+      .eq('user_id', profile!.id)
       .order('updated_at', { ascending: false })
       .then((result: { data: Project[] | null }) => {
         if (result.data) setProjects(result.data);

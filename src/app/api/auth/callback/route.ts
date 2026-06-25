@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${SITE_ORIGIN}${BASE_PATH}/login?error=auth_failed`);
   }
 
-  // ─── บังคับตรวจสิทธิ์ฝั่ง Server ทันทีหลังยืนยันตัวตนสำเร็จ ───
+  // ─── บังคับตรวจสิทธิ์ฝั่ง Server ทันทีหลังยืนยันตัวตนสำเร็จ ───-
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {

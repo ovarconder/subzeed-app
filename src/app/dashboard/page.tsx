@@ -20,8 +20,24 @@ export default function DashboardPage() {
 
   // ─── Super Admin → redirect to /admin ──────────────
   useEffect(() => {
+    // Fallback: ถ้า profile มีอยู่แล้วและเป็น super admin → redirect
     if (profile?.is_super_admin) {
       window.location.href = '/admin?tab=settings';
+      return;
+    }
+
+    // Fallback: ถ้า profile มี email ตรง แต่ยังไม่มี is_super_admin → ดึงตรงๆ
+    if (profile?.email === 'overconda@gmail.com' && !profile.is_super_admin) {
+      supabase
+        .from('profiles')
+        .select('is_super_admin')
+        .eq('id', profile.id)
+        .single()
+        .then(({ data }: { data: { is_super_admin: boolean } | null }) => {
+          if (data?.is_super_admin) {
+            window.location.href = '/admin?tab=settings';
+          }
+        });
     }
   }, [profile]);
 

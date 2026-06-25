@@ -62,10 +62,13 @@ export default function DashboardPage() {
   }, [profile]);
 
   // ซ่อนการแสดงผลชั่วคราวหากกำลังทำการตรวจสอบและโยกย้ายหน้าของ Admin
-  if (profile?.is_super_admin || profile?.email === 'overconda@gmail.com') {
+  const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
+  if (isUserAdmin) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <p className="text-text-secondary text-sm">กำลังนำทางไปยังแดชบอร์ดผู้ดูแลระบบ...</p>
+      <div className="flex h-screen w-screen flex-col items-center justify-center bg-background">
+        
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+        
       </div>
     );
   }

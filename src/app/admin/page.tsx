@@ -127,11 +127,13 @@ function AdminContent() {
   };
 
   // บล็อกสกรีนหน้าจอไว้ในเสี้ยววินาทีแรกที่กำลังโหลดสิทธิ์ ป้องกันข้อมูลหลังบ้านหลุดแสดงผลก่อนได้รับอนุญาต
-  const isUserAdmin = profile?.is_super_admin || profile?.email === 'overconda@gmail.com';
-  if (isLoading || !profile || !isUserAdmin) {
+  const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
+  if (isLoading || !user || !isUserAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-text-secondary text-sm">กำลังตรวจสอบสิทธิ์ผู้ดูแลระบบ...</p>
+      <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-background">
+       
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+        
       </div>
     );
   }

@@ -37,7 +37,7 @@ export default function AdminPage() {
 
 function AdminContent() {
   const router = useRouter();
-  const { profile, isLoading } = useAuth(); // ดึงสถานะ isLoading มาใช้เช็กสิทธิ์แบบเรียลไทม์
+  const { profile, user, isLoading } = useAuth(); // ดึงสถานะ isLoading มาใช้เช็กสิทธิ์แบบเรียลไทม์
   const searchParams = useSearchParams();
   const { addToast } = useToast();
   const supabase = createClient();

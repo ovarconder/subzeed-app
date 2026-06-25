@@ -14,7 +14,7 @@ import type { Project } from '@/lib/types';
 
 export default function DashboardPage() {
   const router = useRouter(); // นำมารับมือกับการย้ายหน้าภายใน Next.js app
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();

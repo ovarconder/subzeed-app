@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceSupabase } from '@/lib/supabase/server';
-import { TIER_CONFIGS } from '@/lib/types';
 
 /**
  * POST /api/admin/initialize
  *
- * ตั้งค่า Admin คนแรก (Email: overconda@gmail.com)
- * - อัปเกรด Tier → business_pro
- * - โควตา 2500 นาที (สูงสุด)
+ * ตั้งค่า Super Admin คนแรก (Email: overconda@gmail.com)
+ * - set is_super_admin = true (ไม่เปลี่ยน tier)
  * - ปลอดภัย: ทำงานได้ครั้งเดียว
  *
- * เรียกจาก Terminal: curl -X POST http://localhost:3000/api/admin/initialize
+ * เรียก: curl -X POST https://www.overconda.space/subzeed/api/admin/initialize
  */
 export async function POST(_request: NextRequest) {
   const supabase = createServiceSupabase();
   const email = 'overconda@gmail.com';
 
-  // ─── หา user จาก email ─────────────────────────────
   const { data: users, error: listError } = await supabase
     .from('profiles')
-    .select('id, email, tier')
+    .select('id, email, tier, is_super_admin')
     .eq('email', email);
 
   if (listError) {
@@ -36,28 +33,18 @@ export async function POST(_request: NextRequest) {
 
   const user = users[0];
 
-  // ป้องกันการเรียกซ้ำ
-  if (user.tier === 'business_pro') {
+  if (user.is_super_admin) {
     return NextResponse.json({
-      message: `✅ ${email} เป็น Admin อยู่แล้ว`,
+      message: `✅ ${email} เป็น Super Admin อยู่แล้ว`,
       user,
     });
   }
 
-  // ─── อัปเดตเป็น Admin ──────────────────────────────
-  const tierConfig = TIER_CONFIGS.business_pro;
-  const now = new Date();
-  const cycleEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
   const { error: updateError } = await supabase
     .from('profiles')
     .update({
-      tier: 'business_pro',
-      quota_minutes_total: tierConfig.quotaMinutes,
-      quota_minutes_used: 0,
-      billing_cycle_start: now.toISOString(),
-      billing_cycle_end: cycleEnd.toISOString(),
-      updated_at: now.toISOString(),
+      is_super_admin: true,
+      updated_at: new Date().toISOString(),
     })
     .eq('id', user.id);
 
@@ -66,22 +53,10 @@ export async function POST(_request: NextRequest) {
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
 
-  // ─── Log ────────────────────────────────────────────
-  await supabase.from('billing_history').insert({
-    user_id: user.id,
-    action_type: 'subscribe',
-    previous_tier: user.tier || 'free',
-    new_tier: 'business_pro',
-    amount_thb: tierConfig.price,
-    billing_cycle_start: now.toISOString(),
-    billing_cycle_end: cycleEnd.toISOString(),
-    payment_status: 'admin_adjustment',
-  });
-
   return NextResponse.json({
     success: true,
-    message: `✅ ${email} ถูกตั้งค่าเป็น Admin (business_pro) เรียบร้อย`,
-    tier: 'business_pro',
-    quotaMinutes: tierConfig.quotaMinutes,
+    message: `✅ ${email} ถูกตั้งค่าเป็น Super Admin เรียบร้อย (ยังคง tier: ${user.tier})`,
+    is_super_admin: true,
+    tier: user.tier,
   });
 }

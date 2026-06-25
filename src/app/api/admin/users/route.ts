@@ -17,15 +17,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // เช็คว่าเป็น admin หรือ business_pro
+    // เช็คว่าเป็น super admin
     const adminSupabase = createServiceSupabase();
     const { data: profile } = await adminSupabase
       .from('profiles')
-      .select('tier, email')
+      .select('tier, email, is_super_admin')
       .eq('id', session.user.id)
       .single();
 
-    if (!profile || (profile.tier !== 'business_pro' && profile.email !== 'overconda@gmail.com')) {
+    if (!profile || (profile.is_super_admin !== true && profile.email !== 'overconda@gmail.com')) {
       return NextResponse.json({ error: 'Forbidden: Admin only' }, { status: 403 });
     }
 

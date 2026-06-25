@@ -46,11 +46,11 @@ export async function GET(
     const isOwner = billing.user_id === userId;
     const { data: profile } = await adminSupabase
       .from('profiles')
-      .select('tier')
+      .select('tier, is_super_admin')
       .eq('id', userId)
       .single();
 
-    if (!isOwner && profile?.tier !== 'business_pro') {
+    if (!isOwner && profile?.is_super_admin !== true) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

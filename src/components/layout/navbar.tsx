@@ -59,7 +59,7 @@ export function Navbar() {
                 Dashboard
               </Link>
 
-              {profile?.tier === 'business_pro' && (
+              {profile?.is_super_admin && (
                 <Link
                   href="/admin"
                   className="text-xs rounded-full px-2.5 py-0.5 font-medium transition-colors"

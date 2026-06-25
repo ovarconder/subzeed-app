@@ -23,11 +23,11 @@ export async function POST(request: NextRequest) {
     const adminSupabase = createServiceSupabase();
     const { data: profile } = await adminSupabase
       .from('profiles')
-      .select('tier, email')
+      .select('tier, email, is_super_admin')
       .eq('id', session.user.id)
       .single();
 
-    if (!profile || (profile.tier !== 'business_pro' && profile.email !== 'overconda@gmail.com')) {
+    if (!profile || (profile.is_super_admin !== true && profile.email !== 'overconda@gmail.com')) {
       return NextResponse.json({ error: 'Forbidden: Admin only' }, { status: 403 });
     }
 

@@ -42,12 +42,12 @@ export async function GET(
     // ─── ตรวจสอบสิทธิ์: ต้องเป็นเจ้าของหรือ admin ──────
     const { data: profile } = await adminSupabase
       .from('profiles')
-      .select('tier, email')
+      .select('tier, email, is_super_admin')
       .eq('id', userId)
       .single();
 
     const isOwner = billing.user_id === userId;
-    const isAdmin = profile?.tier === 'business_pro';
+    const isAdmin = profile?.is_super_admin === true;
 
     if (!isOwner && !isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

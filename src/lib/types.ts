@@ -123,6 +123,7 @@ export interface Profile {
   email: string;
   phone_number: string | null;
   tier: SubscriptionTier;
+  is_super_admin?: boolean;
   quota_minutes_total: number;
   quota_minutes_used: number;
   billing_cycle_start: string;

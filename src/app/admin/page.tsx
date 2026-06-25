@@ -47,7 +47,7 @@ function AdminDashboard() {
   const [fingerprints, setFingerprints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const isAdmin = profile?.tier === 'business_pro' ||
+  const isAdmin = profile?.is_super_admin === true ||
     (typeof window !== 'undefined' && localStorage.getItem('admin_bypass') === 'true');
 
   useEffect(() => {

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       .eq('id', session.user.id)
       .single();
 
-    if (!profile || (profile.tier !== 'business_pro' && profile.email !== 'admin@subzeed.com')) {
+    if (!profile || (profile.tier !== 'business_pro' && profile.email !== 'overconda@gmail.com')) {
       return NextResponse.json({ error: 'Forbidden: Admin only' }, { status: 403 });
     }
 
@@ -56,3 +56,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+

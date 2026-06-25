@@ -1,104 +1,99 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
-import { TierBadge, QuotaBar } from '@/components/ui/badge';
 import { useAuth } from '@/components/auth/auth-provider';
 import { useToast } from '@/components/ui/toaster';
+import { Button } from '@/components/ui/button';
+import UsersTable from '@/components/admin/UsersTable';
+import BillingTable from '@/components/admin/BillingTable';
+import FingerprintsTable from '@/components/admin/FingerprintsTable';
+import SiteSettings from '@/components/admin/SiteSettings';
+import Reports from '@/components/admin/Reports';
 import type { Profile, BillingHistory } from '@/lib/types';
 
-// ============================================================
-// 📊 ADMIN DASHBOARD — SubZeed
-// ============================================================
-// เส้นทาง: /admin
-// ต้องการ: user ที่มี tier = 'business_pro' หรือ email admin ที่ hardcode
-// ============================================================
+type TabType = 'users' | 'abusers' | 'billing' | 'fingerprints' | 'settings' | 'reports';
 
-interface FingerprintRecord {
-  id: string;
-  fingerprint: string;
-  user_id: string;
-  email: string;
-  action: string;
-  ip_address: string | null;
-  blocked: boolean;
-  created_at: string;
+const TABS: { key: TabType; label: string }[] = [
+  { key: 'users', label: '👥 ผู้ใช้' },
+  { key: 'abusers', label: '🚫 Abuser' },
+  { key: 'billing', label: '💰 ธุรกรรม' },
+  { key: 'fingerprints', label: '🖐️ Fingerprint' },
+  { key: 'reports', label: '📊 รายงาน' },
+  { key: 'settings', label: '⚙️ ตั้งค่าเว็บ' },
+];
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-text-secondary">กำลังโหลด...</p></div>}>
+      <AdminDashboard />
+    </Suspense>
+  );
 }
 
-type TabType = 'users' | 'abusers' | 'billing' | 'fingerprints';
-
-export default function AdminDashboardPage() {
+function AdminDashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, profile } = useAuth();
   const supabase = createClient();
   const { addToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<TabType>('users');
-  const [users, setUsers] = useState<Profile[]>([]);
-  const [billingHistory, setBillingHistory] = useState<BillingHistory[]>([]);
-  const [fingerprints, setFingerprints] = useState<FingerprintRecord[]>([]);
+  const tabFromUrl = searchParams.get('tab') as TabType | null;
+  const [activeTab, setActiveTab] = useState<TabType>(tabFromUrl || 'users');
+  const [users, setUsers] = useState<any[]>([]);
+  const [billingHistory, setBillingHistory] = useState<any[]>([]);
+  const [fingerprints, setFingerprints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ─── ตรวจสอบสิทธิ์ Admin ─────────────────────────────────
-  const isAdmin =
-    profile?.tier === 'business_pro' ||
-    (typeof window !== 'undefined' &&
-      (localStorage.getItem('admin_bypass') === 'true'));
+  const isAdmin = profile?.tier === 'business_pro' ||
+    (typeof window !== 'undefined' && localStorage.getItem('admin_bypass') === 'true');
 
   useEffect(() => {
-    if (!profile) return; // still loading
-
+    if (!profile) return;
     if (!isAdmin) {
       addToast('⛔ ไม่มีสิทธิ์เข้าถึงหน้า Admin', 'error');
       router.push('/dashboard');
+    }
+  }, [profile]);
+
+  useEffect(() => {
+    if (tabFromUrl && TABS.find(t => t.key === tabFromUrl)) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
+
+  useEffect(() => {
+    if (activeTab === 'settings' || activeTab === 'reports') {
+      setLoading(false);
       return;
     }
-
     fetchData();
-  }, [profile, activeTab]);
+  }, [activeTab]);
 
-  // ─── ดึงข้อมูล ────────────────────────────────────────────
   const fetchData = async () => {
     setLoading(true);
-    const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-    // ใช้ API route แทน direct service role (ปลอดภัยกว่า)
     try {
       switch (activeTab) {
         case 'users': {
           const res = await fetch('/api/admin/users');
-          if (res.ok) {
-            const data = await res.json();
-            setUsers(data.users || []);
-          }
-          break;
-        }
-        case 'billing': {
-          const res = await fetch('/api/admin/billing');
-          if (res.ok) {
-            const data = await res.json();
-            setBillingHistory(data.history || []);
-          }
-          break;
-        }
-        case 'fingerprints': {
-          const res = await fetch('/api/admin/fingerprints');
-          if (res.ok) {
-            const data = await res.json();
-            setFingerprints(data.records || []);
-          }
+          if (res.ok) setUsers((await res.json()).users || []);
           break;
         }
         case 'abusers': {
           const res = await fetch('/api/admin/users?abusers=true');
-          if (res.ok) {
-            const data = await res.json();
-            setUsers(data.users || []);
-          }
+          if (res.ok) setUsers((await res.json()).users || []);
+          break;
+        }
+        case 'billing': {
+          const res = await fetch('/api/admin/billing');
+          if (res.ok) setBillingHistory((await res.json()).history || []);
+          break;
+        }
+        case 'fingerprints': {
+          const res = await fetch('/api/admin/fingerprints');
+          if (res.ok) setFingerprints((await res.json()).records || []);
           break;
         }
       }
@@ -109,7 +104,6 @@ export default function AdminDashboardPage() {
     setLoading(false);
   };
 
-  // ─── อัปเดต Tier ผู้ใช้ ──────────────────────────────────
   const handleUpdateTier = async (userId: string, newTier: string) => {
     const res = await fetch('/api/admin/update-tier', {
       method: 'POST',
@@ -124,7 +118,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // ─── ปลดล็อก Abuser ─────────────────────────────────────
   const handleUnblock = async (userId: string) => {
     const res = await fetch('/api/admin/unblock', {
       method: 'POST',
@@ -139,6 +132,11 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    router.push(`/admin?tab=${tab}`, { scroll: false });
+  };
+
   if (!profile || !isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -149,60 +147,43 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Admin Navbar */}
       <nav className="sticky top-0 z-40 w-full border-b border-border bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-4">
             <Link href="/" className="text-xl font-bold text-primary">SubZeed</Link>
-            <span className="text-sm rounded-full bg-danger/10 text-danger px-3 py-0.5 font-medium">
-              ADMIN
-            </span>
+            <span className="text-sm rounded-full bg-danger/10 text-danger px-3 py-0.5 font-medium">ADMIN</span>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="text-sm text-text-secondary hover:text-text">
-              ← กลับ Dashboard
-            </Link>
-            <span className="text-sm text-text-secondary">
-              {user?.email}
-            </span>
+            <Link href="/dashboard" className="text-sm text-text-secondary hover:text-text">← กลับ Dashboard</Link>
+            <span className="text-sm text-text-secondary">{user?.email}</span>
           </div>
         </div>
       </nav>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
-        {/* ─── Header ─────────────────────────────────── */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold">Admin Dashboard</h1>
             <p className="text-sm text-text-secondary mt-1">จัดการผู้ใช้ ระบบ และข้อมูลทั้งหมด</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={fetchData}>
-              🔄 รีเฟรช
-            </Button>
+          <Button variant="outline" size="sm" onClick={fetchData}>🔄 รีเฟรช</Button>
+        </div>
+
+        {(activeTab === 'users' || activeTab === 'abusers' || activeTab === 'billing' || activeTab === 'fingerprints') && (
+          <div className="grid gap-4 sm:grid-cols-4 mb-8">
+            <StatCard label="ผู้ใช้ทั้งหมด" value={users.length.toString()} color="text-primary" />
+            <StatCard label="Abuser" value={users.filter((u: any) => u.is_quota_abuser).length.toString()} color="text-danger" />
+            <StatCard label="Fingerprint Records" value={fingerprints.length.toString()} color="text-secondary" />
+            <StatCard label="ธุรกรรมทั้งหมด" value={billingHistory.length.toString()} color="text-success" />
           </div>
-        </div>
+        )}
 
-        {/* ─── Stats Overview ─────────────────────────── */}
-        <div className="grid gap-4 sm:grid-cols-4 mb-8">
-          <StatCard label="ผู้ใช้ทั้งหมด" value={users.length.toString()} color="text-primary" />
-          <StatCard label="Abuser" value={users.filter(u => (u as any).is_quota_abuser).length.toString()} color="text-danger" />
-          <StatCard label="指纹 Records" value={fingerprints.length.toString()} color="text-secondary" />
-          <StatCard label="ธุรกรรมทั้งหมด" value={billingHistory.length.toString()} color="text-success" />
-        </div>
-
-        {/* ─── Tabs ───────────────────────────────────── */}
-        <div className="flex gap-1 mb-6 border-b border-border">
-          {([
-            { key: 'users', label: '👥 ผู้ใช้' },
-            { key: 'abusers', label: '🚫 Abuser' },
-            { key: 'billing', label: '💰 ธุรกรรม' },
-            { key: 'fingerprints', label: '🖐️ Fingerprint' },
-          ] as { key: TabType; label: string }[]).map((tab) => (
+        <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto">
+          {TABS.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              onClick={() => handleTabChange(tab.key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.key
                   ? 'border-primary text-primary'
                   : 'border-transparent text-text-secondary hover:text-text'
@@ -213,191 +194,40 @@ export default function AdminDashboardPage() {
           ))}
         </div>
 
-        {/* ─── Content ────────────────────────────────── */}
-        {loading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 rounded-lg skeleton" />
-            ))}
-          </div>
-        ) : (
-          <>
-            {/* Users Tab */}
-            {(activeTab === 'users' || activeTab === 'abusers') && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">อีเมล</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">Tier</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">โควตา</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">Abuser</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">รอบบิล</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">จัดการ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.length === 0 ? (
-                      <tr><td colSpan={6} className="py-8 text-center text-text-secondary">ไม่มีข้อมูล</td></tr>
-                    ) : (
-                      users.map((u) => (
-                        <tr key={u.id} className="border-b border-border hover:bg-white/50">
-                          <td className="py-3 px-4">
-                            <span className="font-medium">{u.email}</span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <TierBadge tier={u.tier} />
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="max-w-[180px]">
-                              <QuotaBar used={u.quota_minutes_used} total={u.quota_minutes_total} />
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            {(u as any).is_quota_abuser ? (
-                              <span className="text-danger font-medium">🚫 ใช่</span>
-                            ) : (
-                              <span className="text-text-secondary">—</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-xs text-text-secondary">
-                            {new Date(u.billing_cycle_end).toLocaleDateString('th-TH')}
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex gap-2">
-                              <select
-                                className="text-xs rounded border border-border px-2 py-1"
-                                value={u.tier}
-                                onChange={(e) => handleUpdateTier(u.id, e.target.value)}
-                              >
-                                <option value="free">Free</option>
-                                <option value="basic">Basic</option>
-                                <option value="premium">Premium</option>
-                                <option value="business_starter">Business Starter</option>
-                                <option value="business_pro">Business Pro</option>
-                              </select>
-                              {(u as any).is_quota_abuser && (
-                                <Button size="sm" variant="outline" onClick={() => handleUnblock(u.id)}>
-                                  ปลดล็อก
-                                </Button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        {activeTab === 'settings' && <SiteSettings onRefresh={fetchData} />}
+        {activeTab === 'reports' && <Reports />}
 
-            {/* Billing Tab */}
-            {activeTab === 'billing' && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">ผู้ใช้</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">Action</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">Tier</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">จำนวนเงิน</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">เลขที่ใบเสร็จ</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">วันที่</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">ดาวน์โหลด</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {billingHistory.length === 0 ? (
-                      <tr><td colSpan={7} className="py-8 text-center text-text-secondary">ไม่มีประวัติธุรกรรม</td></tr>
-                    ) : (
-                      billingHistory.map((b) => (
-                        <tr key={b.id} className="border-b border-border hover:bg-white/50">
-                          <td className="py-3 px-4 font-medium">{b.user_id?.slice(0, 8)}...</td>
-                          <td className="py-3 px-4">
-                            <span className="capitalize">{b.action_type.replace('_', ' ')}</span>
-                          </td>
-                          <td className="py-3 px-4">
-                            {b.previous_tier} → {b.new_tier}
-                          </td>
-                          <td className="py-3 px-4 font-semibold">{b.amount_thb.toLocaleString()}.-</td>
-                          <td className="py-3 px-4 text-xs text-text-secondary">
-                            {b.invoice_number || '—'}
-                          </td>
-                          <td className="py-3 px-4 text-xs text-text-secondary">
-                            {new Date(b.created_at).toLocaleDateString('th-TH')}
-                          </td>
-                          <td className="py-3 px-4">
-                            <a
-                              href={`/api/invoice/${b.id}/download`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-primary hover:underline"
-                            >
-                              📄 ใบเสร็จ
-                            </a>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        {(activeTab === 'users' || activeTab === 'abusers') && (
+          loading ? <Skeleton count={4} /> : <UsersTable users={users} onUpdateTier={handleUpdateTier} onUnblock={handleUnblock} />
+        )}
 
-            {/* Fingerprints Tab */}
-            {activeTab === 'fingerprints' && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">Fingerprint</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">อีเมล</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">Action</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">IP</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">บล็อก</th>
-                      <th className="text-left py-3 px-4 font-medium text-text-secondary">วันที่</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fingerprints.length === 0 ? (
-                      <tr><td colSpan={6} className="py-8 text-center text-text-secondary">ไม่มีข้อมูล</td></tr>
-                    ) : (
-                      fingerprints.map((f) => (
-                        <tr key={f.id} className="border-b border-border hover:bg-white/50">
-                          <td className="py-3 px-4 font-mono text-xs">{f.fingerprint.slice(0, 20)}...</td>
-                          <td className="py-3 px-4">{f.email}</td>
-                          <td className="py-3 px-4 capitalize">{f.action}</td>
-                          <td className="py-3 px-4 text-xs text-text-secondary">{f.ip_address || '—'}</td>
-                          <td className="py-3 px-4">
-                            {f.blocked ? (
-                              <span className="text-danger font-medium">🔴 ใช่</span>
-                            ) : (
-                              <span className="text-success font-medium">🟢 ไม่</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-xs text-text-secondary">
-                            {new Date(f.created_at).toLocaleDateString('th-TH')}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+        {activeTab === 'billing' && (
+          loading ? <Skeleton count={4} /> : <BillingTable billing={billingHistory} />
+        )}
+
+        {activeTab === 'fingerprints' && (
+          loading ? <Skeleton count={4} /> : <FingerprintsTable fingerprints={fingerprints} />
         )}
       </div>
     </div>
   );
 }
 
-// ─── Stat Card Component ──────────────────────────────────
 function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div className="rounded-xl border border-border bg-white p-5">
       <p className="text-sm text-text-secondary">{label}</p>
       <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+function Skeleton({ count }: { count: number }) {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="h-16 rounded-lg skeleton" />
+      ))}
     </div>
   );
 }

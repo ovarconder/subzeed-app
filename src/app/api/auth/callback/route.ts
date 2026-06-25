@@ -44,6 +44,12 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        domain: 'overconda.space',
+        path: BASE_PATH, // '/subzeed' — ให้ cookie ใช้ได้ทั้ง app
+        sameSite: 'lax' as const,
+        secure: true,
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -51,7 +57,7 @@ export async function GET(request: NextRequest) {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, { ...options, path: BASE_PATH })
             );
           } catch {
             // Server Component context — ignore

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/layout/navbar';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
@@ -11,13 +12,21 @@ import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { profile } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
+  // ─── Super Admin → redirect to /admin ────────────────
   useEffect(() => {
-    if (!profile) return;
+    if (profile?.is_super_admin) {
+      router.replace('/admin');
+    }
+  }, [profile, router]);
+
+  useEffect(() => {
+    if (!profile || profile.is_super_admin) return;
     supabase
       .from('projects')
       .select('*')
@@ -103,3 +112,4 @@ export default function DashboardPage() {
     </>
   );
 }
+

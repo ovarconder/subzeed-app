@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -12,7 +13,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 
 export default function DashboardPage() {
-  const router = useRouter();
+  const router = useRouter(); // นำมารับมือกับการย้ายหน้าภายใน Next.js app
   const { profile } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,13 +21,13 @@ export default function DashboardPage() {
 
   // ─── Super Admin → redirect to /admin ──────────────
   useEffect(() => {
-    // Fallback: ถ้า profile มีอยู่แล้วและเป็น super admin → redirect
-    if (profile?.is_super_admin) {
-      window.location.href = '/admin?tab=settings';
+    // ใช้ router.push แทน window.location.href เพื่อไม่ให้หลุด Base Path (/subzeed)
+    if (profile?.is_super_admin || profile?.email === 'overconda@gmail.com') {
+      router.push('/admin?tab=settings');
       return;
     }
 
-    // Fallback: ถ้า profile มี email ตรง แต่ยังไม่มี is_super_admin → ดึงตรงๆ
+    // แก้ไขจุดนี้: ใส่ Type กำกับไว้ที่โครงสร้างรีเทิร์น ({ data }: { data: any }) เพื่อผ่านการเช็กของ TypeScript
     if (profile?.email === 'overconda@gmail.com' && !profile.is_super_admin) {
       supabase
         .from('profiles')
@@ -35,27 +36,39 @@ export default function DashboardPage() {
         .single()
         .then(({ data }: { data: { is_super_admin: boolean } | null }) => {
           if (data?.is_super_admin) {
-            window.location.href = '/admin?tab=settings';
+            router.push('/admin?tab=settings');
           }
         });
     }
-  }, [profile]);
+  }, [profile, router]);
 
   useEffect(() => {
-    if (!profile || profile.is_super_admin) {
+    // หากเป็นแอดมิน ไม่ต้องโหลดข้อมูลโปรเจกต์ผู้ใช้ทั่วไป
+    if (!profile || profile.is_super_admin || profile.email === 'overconda@gmail.com') {
       setLoading(false);
       return;
     }
+    
     supabase
       .from('projects')
       .select('*')
-      .eq('user_id', profile!.id)
+      .eq('user_id', profile.id)
       .order('updated_at', { ascending: false })
+      // แก้ไขจุดนี้: ใส่ Type ครอบให้กับตัวแปร result 
       .then((result: { data: Project[] | null }) => {
         if (result.data) setProjects(result.data);
         setLoading(false);
       });
   }, [profile]);
+
+  // ซ่อนการแสดงผลชั่วคราวหากกำลังทำการตรวจสอบและโยกย้ายหน้าของ Admin
+  if (profile?.is_super_admin || profile?.email === 'overconda@gmail.com') {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <p className="text-text-secondary text-sm">กำลังนำทางไปยังแดชบอร์ดผู้ดูแลระบบ...</p>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -131,4 +144,3 @@ export default function DashboardPage() {
     </>
   );
 }
-

@@ -21,6 +21,10 @@
  * = https://www.overconda.space/subzeed/dashboard
  */
 
+
+// src/app/api/auth/callback/route.ts
+// src/app/api/auth/callback/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
@@ -33,7 +37,7 @@ export async function GET(request: NextRequest) {
 
   const code = searchParams.get('code');
   const redirectTo = searchParams.get('redirect_to');
-  const next = searchParams.get('redirect') || redirectTo || '/dashboard';
+  let next = searchParams.get('redirect') || redirectTo || '/dashboard';
 
   if (!code) {
     return NextResponse.redirect(`${SITE_ORIGIN}${BASE_PATH}/login?error=missing_code`);
@@ -46,7 +50,7 @@ export async function GET(request: NextRequest) {
     {
       cookieOptions: {
         domain: 'overconda.space',
-        path: BASE_PATH, // '/subzeed' — ให้ cookie ใช้ได้ทั้ง app
+        path: BASE_PATH,
         sameSite: 'lax' as const,
         secure: true,
       },
@@ -73,6 +77,26 @@ export async function GET(request: NextRequest) {
     console.error('[auth/callback] exchangeCodeForSession error:', error.message);
     return NextResponse.redirect(`${SITE_ORIGIN}${BASE_PATH}/login?error=auth_failed`);
   }
+
+  // ─── ตรวจสอบสิทธิ์ Admin/Super Admin จาก Database ──────────────────
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_super_admin')
+        .eq('id', user.id)
+        .single();
+
+      // ถ้าเป็น Super Admin หรือเป็น Email หลักของแอป ให้เปลี่ยนทิศทางไปที่หน้า /admin
+      if (profile?.is_super_admin || user.email === 'overconda@gmail.com') {
+        next = '/admin?tab=settings';
+      }
+    }
+  } catch (err) {
+    console.error('[auth/callback] Check admin role error:', err);
+  }
+  // ──────────────────────────────────────────────────────────────────
 
   // กัน double basePath: next อาจมาเป็น "/dashboard" หรือ "/subzeed/dashboard"
   const cleanNext = next.startsWith(BASE_PATH) ? next.slice(BASE_PATH.length) : next;

@@ -1,3 +1,5 @@
+// src/app/admin/page.tsx
+
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
@@ -27,163 +29,140 @@ const TABS: { key: TabType; label: string }[] = [
 
 export default function AdminPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-text-secondary">กำลังโหลด...</p></div>}>
-      <AdminDashboard />
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-text-secondary text-sm">กำลังโหลดหน้าผู้ดูแลระบบ...</p></div>}>
+      <AdminContent />
     </Suspense>
   );
 }
 
-function AdminDashboard() {
+function AdminContent() {
   const router = useRouter();
+  const { profile, isLoading } = useAuth(); // ดึงสถานะ isLoading มาใช้เช็กสิทธิ์แบบเรียลไทม์
   const searchParams = useSearchParams();
-  const { user, profile } = useAuth();
-  const supabase = createClient();
   const { addToast } = useToast();
+  const supabase = createClient();
 
-  const tabFromUrl = searchParams.get('tab') as TabType | null;
-  const [activeTab, setActiveTab] = useState<TabType>(tabFromUrl || 'users');
-  const [users, setUsers] = useState<any[]>([]);
-  const [billingHistory, setBillingHistory] = useState<any[]>([]);
+  const activeTab = (searchParams.get('tab') as TabType) || 'users';
+
+  const [users, setUsers] = useState<Profile[]>([]);
+  const [billingHistory, setBillingHistory] = useState<BillingHistory[]>([]);
   const [fingerprints, setFingerprints] = useState<any[]>([]);
+  const [stats, setStats] = useState({ totalUsers: 0, activeToday: 0, totalRevenue: 0 });
   const [loading, setLoading] = useState(true);
 
-  const isAdmin = profile?.is_super_admin === true ||
-    (typeof window !== 'undefined' && localStorage.getItem('admin_bypass') === 'true');
-
+  // ─── 1. ระบบตรวจสิทธิ์แอดมิน (Admin Guard) ──────────────────
   useEffect(() => {
-    if (!profile) return;
-    if (!isAdmin) {
-      addToast('⛔ ไม่มีสิทธิ์เข้าถึงหน้า Admin', 'error');
+    // ถ้ายังดึงสถานะล็อกอินหรือโปรไฟล์ไม่เสร็จ ให้รอการโหลดก่อน อย่าเพิ่งดีดผู้ใช้ออก
+    if (isLoading) return;
+
+    const isUserAdmin = profile?.is_super_admin || profile?.email === 'overconda@gmail.com';
+    
+    // หากโหลดข้อมูลโปรไฟล์เสร็จแล้ว แต่ตรวจพบว่าไม่มีสิทธิ์แอดมิน ให้ดีดกลับหน้าหลักผ่าน router ทันที
+    if (!profile || !isUserAdmin) {
+      addToast('คุณไม่มีสิทธิ์เข้าถึงหน้านี้', 'error');
       router.push('/dashboard');
     }
-  }, [profile]);
+  }, [profile, isLoading, router]);
 
-  useEffect(() => {
-    if (tabFromUrl && TABS.find(t => t.key === tabFromUrl)) {
-      setActiveTab(tabFromUrl);
-    }
-  }, [tabFromUrl]);
-
-  useEffect(() => {
-    if (activeTab === 'settings' || activeTab === 'reports') {
-      setLoading(false);
-      return;
-    }
-    fetchData();
-  }, [activeTab]);
-
+  // ฟังก์ชันดึงข้อมูลดั้งเดิมของระบบ
   const fetchData = async () => {
     setLoading(true);
     try {
-      switch (activeTab) {
-        case 'users': {
-          const res = await fetch('/api/admin/users');
-          if (res.ok) setUsers((await res.json()).users || []);
-          break;
-        }
-        case 'abusers': {
-          const res = await fetch('/api/admin/users?abusers=true');
-          if (res.ok) setUsers((await res.json()).users || []);
-          break;
-        }
-        case 'billing': {
-          const res = await fetch('/api/admin/billing');
-          if (res.ok) setBillingHistory((await res.json()).history || []);
-          break;
-        }
-        case 'fingerprints': {
-          const res = await fetch('/api/admin/fingerprints');
-          if (res.ok) setFingerprints((await res.json()).records || []);
-          break;
-        }
+      if (activeTab === 'users' || activeTab === 'abusers') {
+        const isAbuser = activeTab === 'abusers';
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('is_blocked', isAbuser)
+          .order('created_at', { ascending: false });
+        if (data) setUsers(data);
+      } else if (activeTab === 'billing') {
+        const { data } = await supabase
+          .from('billing_history')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (data) setBillingHistory(data);
+      } else if (activeTab === 'fingerprints') {
+        const { data } = await supabase
+          .from('user_fingerprints')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (data) setFingerprints(data);
       }
+
+      // ดึงข้อมูล Stats สรุปภาพรวม
+      const { data: sData } = await supabase.rpc('get_admin_stats');
+      if (sData) setStats(sData);
     } catch (err) {
-      console.error('[admin] fetch error:', err);
-      addToast('โหลดข้อมูลไม่สำเร็จ', 'error');
+      console.error('Fetch admin data error:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const handleUpdateTier = async (userId: string, newTier: string) => {
-    const res = await fetch('/api/admin/update-tier', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, tier: newTier }),
-    });
-    if (res.ok) {
-      addToast('✅ อัปเดต Tier สำเร็จ', 'success');
+  // ─── 2. โหลดข้อมูลเมื่อสิทธิ์ผ่านและหน้าเว็บพร้อมทำงาน ──────────────────
+  useEffect(() => {
+    if (isLoading) return;
+
+    const isUserAdmin = profile?.is_super_admin || profile?.email === 'overconda@gmail.com';
+    if (!profile || !isUserAdmin) return;
+
+    fetchData();
+  }, [profile, isLoading, activeTab]);
+
+  const handleUpdateTier = async (userId: string, tier: string) => {
+    const { error } = await supabase.from('profiles').update({ tier }).eq('id', userId);
+    if (!error) {
+      addToast('อัปเดตแพ็กเกจสำเร็จ', 'success');
       fetchData();
-    } else {
-      addToast('❌ อัปเดตล้มเหลว', 'error');
     }
   };
 
   const handleUnblock = async (userId: string) => {
-    const res = await fetch('/api/admin/unblock', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
-    });
-    if (res.ok) {
-      addToast('✅ ปลดล็อกผู้ใช้สำเร็จ', 'success');
+    const { error } = await supabase.from('profiles').update({ is_blocked: false }).eq('id', userId);
+    if (!error) {
+      addToast('ปลดบล็อกผู้ใช้สำเร็จ', 'success');
       fetchData();
-    } else {
-      addToast('❌ ปลดล็อกไม่สำเร็จ', 'error');
     }
   };
 
-  const handleTabChange = (tab: TabType) => {
-    setActiveTab(tab);
-    router.push(`/admin?tab=${tab}`, { scroll: false });
-  };
-
-  if (!profile || !isAdmin) {
+  // บล็อกสกรีนหน้าจอไว้ในเสี้ยววินาทีแรกที่กำลังโหลดสิทธิ์ ป้องกันข้อมูลหลังบ้านหลุดแสดงผลก่อนได้รับอนุญาต
+  const isUserAdmin = profile?.is_super_admin || profile?.email === 'overconda@gmail.com';
+  if (isLoading || !profile || !isUserAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-text-secondary">กำลังตรวจสอบสิทธิ์...</p>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-text-secondary text-sm">กำลังตรวจสอบสิทธิ์ผู้ดูแลระบบ...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-surface">
-      <nav className="sticky top-0 z-40 w-full border-b border-border bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-xl font-bold text-primary">SubZeed</Link>
-            <span className="text-sm rounded-full bg-danger/10 text-danger px-3 py-0.5 font-medium">ADMIN</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="text-sm text-text-secondary hover:text-text">← กลับ Dashboard</Link>
-            <span className="text-sm text-text-secondary">{user?.email}</span>
-          </div>
-        </div>
-      </nav>
-
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
+    <div className="min-h-screen bg-background p-6">
+      <div className="mx-auto max-w-7xl">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-            <p className="text-sm text-text-secondary mt-1">จัดการผู้ใช้ ระบบ และข้อมูลทั้งหมด</p>
+            <h1 className="text-2xl font-bold tracking-tight">👑 ระบบจัดการหลังบ้าน (Admin)</h1>
+            <p className="text-text-secondary text-sm">จัดการผู้ใช้ บิล ตรวจสอบผู้ทุจริต และตั้งค่าระบบ</p>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchData}>🔄 รีเฟรช</Button>
+          <Link href="/dashboard">
+            <Button variant="outline">⬅️ กลับหน้าเว็บปกติ</Button>
+          </Link>
         </div>
 
-        {(activeTab === 'users' || activeTab === 'abusers' || activeTab === 'billing' || activeTab === 'fingerprints') && (
-          <div className="grid gap-4 sm:grid-cols-4 mb-8">
-            <StatCard label="ผู้ใช้ทั้งหมด" value={users.length.toString()} color="text-primary" />
-            <StatCard label="Abuser" value={users.filter((u: any) => u.is_quota_abuser).length.toString()} color="text-danger" />
-            <StatCard label="Fingerprint Records" value={fingerprints.length.toString()} color="text-secondary" />
-            <StatCard label="ธุรกรรมทั้งหมด" value={billingHistory.length.toString()} color="text-success" />
-          </div>
-        )}
+        {/* Stats Section */}
+        <div className="grid gap-4 sm:grid-cols-3 mb-8">
+          <StatCard label="ผู้ใช้งานทั้งหมด" value={`${stats.totalUsers} คน`} color="text-primary" />
+          <StatCard label="ออนไลน์วันนี้" value={`${stats.activeToday} คน`} color="text-success" />
+          <StatCard label="รายได้รวม (ประมาณ)" value={`฿${stats.totalRevenue?.toLocaleString()}`} color="text-warning" />
+        </div>
 
-        <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto">
+        {/* Tabs Bar */}
+        <div className="flex border-b border-border mb-6 overflow-x-auto gap-2">
           {TABS.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => handleTabChange(tab.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              onClick={() => router.push(`/admin?tab=${tab.key}`)}
+              className={`pb-3 text-sm font-medium border-b-2 px-1 whitespace-nowrap ${
                 activeTab === tab.key
                   ? 'border-primary text-primary'
                   : 'border-transparent text-text-secondary hover:text-text'
@@ -226,7 +205,7 @@ function Skeleton({ count }: { count: number }) {
   return (
     <div className="space-y-4">
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="h-16 rounded-lg skeleton" />
+        <div key={i} className="h-12 w-full rounded-lg bg-surface skeleton" />
       ))}
     </div>
   );

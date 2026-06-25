@@ -1,3 +1,5 @@
+// src/app/api/site-config/route.ts
+
 import { NextResponse } from 'next/server';
 import { createServiceSupabase } from '@/lib/supabase/server';
 

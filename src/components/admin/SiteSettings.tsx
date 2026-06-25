@@ -12,6 +12,21 @@ import type { SiteConfig } from '@/lib/site-config';
 // ⚙️ Admin — ตั้งค่าเว็บไซต์
 // ============================================================
 
+/**
+ * api() — แก้ปัญหา basePath (/subzeed)
+ * Next.js basePath='/subzeed' ทำให้ API path จริงต้องเป็น /subzeed/api/...
+ * แต่ Client Component fetch() ไม่รู้ basePath ต้องเติมให้เอง
+ */
+function api(path: string): string {
+  if (typeof window === 'undefined') return path;
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  // ถ้า pathname ขึ้นต้นด้วย base path (เช่น /subzeed/admin) ให้เติม base path
+  if (parts.length > 0 && parts[0] !== 'api') {
+    return `/${parts[0]}${path}`;
+  }
+  return path;
+}
+
 type ColorKey = keyof SiteConfig['theme'];
 type SectionKey = 'brand' | 'theme' | 'homepage' | 'footer' | 'typography' | 'misc';
 
@@ -52,7 +67,7 @@ export default function SiteSettings({ onRefresh }: Props) {
   const fetchConfig = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/site-config');
+      const res = await fetch(api('/api/admin/site-config'));
       if (res.ok) {
         const data = await res.json();
         setConfig(data.config);
@@ -82,7 +97,7 @@ export default function SiteSettings({ onRefresh }: Props) {
     if (!config) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/site-config', {
+      const res = await fetch(api('/api/admin/site-config'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config }),

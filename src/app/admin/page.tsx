@@ -37,7 +37,7 @@ export default function AdminPage() {
 
 function AdminContent() {
   const router = useRouter();
-  const { profile, user, isLoading } = useAuth(); // ดึงสถานะ isLoading มาใช้เช็กสิทธิ์แบบเรียลไทม์
+  const { profile, user, isLoading, signOut } = useAuth(); // ดึง signOut สำหรับ Log
   const searchParams = useSearchParams();
   const { addToast } = useToast();
   const supabase = createClient();
@@ -118,6 +118,17 @@ function AdminContent() {
     }
   };
 
+  // ─── Logout ────────────────────────────────────────────
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      addToast('👋 ออกจากระบบสำเร็จ', 'success');
+      router.push('/');
+    } catch {
+      addToast('❌ เกิดข้อผิดพลาดในการออกจากระบบ', 'error');
+    }
+  };
+
   const handleUnblock = async (userId: string) => {
     const { error } = await supabase.from('profiles').update({ is_blocked: false }).eq('id', userId);
     if (!error) {
@@ -146,9 +157,14 @@ function AdminContent() {
             <h1 className="text-2xl font-bold tracking-tight">👑 ระบบจัดการหลังบ้าน (Admin)</h1>
             <p className="text-text-secondary text-sm">จัดการผู้ใช้ บิล ตรวจสอบผู้ทุจริต และตั้งค่าระบบ</p>
           </div>
-          <Link href="/dashboard">
-            <Button variant="outline">⬅️ กลับหน้าเว็บปกติ</Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/dashboard">
+              <Button variant="outline">⬅️ กลับหน้าเว็บปกติ</Button>
+            </Link>
+            <Button variant="outline" onClick={handleLogout} className="text-danger border-danger hover:bg-danger/10">
+              🚪 ออกจากระบบ
+            </Button>
+          </div>
         </div>
 
         {/* Stats Section */}

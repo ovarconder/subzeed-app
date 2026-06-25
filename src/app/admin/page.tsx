@@ -50,19 +50,17 @@ function AdminContent() {
   const [stats, setStats] = useState({ totalUsers: 0, activeToday: 0, totalRevenue: 0 });
   const [loading, setLoading] = useState(true);
 
-  // ─── 1. ระบบตรวจสิทธิ์แอดมิน (Admin Guard) ──────────────────
+  // ─── 1. Admin Guard — ตรวจสอบสิทธิ์ ป้องกัน loop ─────
   useEffect(() => {
-    // ถ้ายังดึงสถานะล็อกอินหรือโปรไฟล์ไม่เสร็จ ให้รอการโหลดก่อน อย่าเพิ่งดีดผู้ใช้ออก
-    if (isLoading) return;
+    if (isLoading) return; // รอให้ auth เสร็จก่อนเสมอ
 
-    const isUserAdmin = profile?.is_super_admin || profile?.email === 'overconda@gmail.com';
-    
-    // หากโหลดข้อมูลโปรไฟล์เสร็จแล้ว แต่ตรวจพบว่าไม่มีสิทธิ์แอดมิน ให้ดีดกลับหน้าหลักผ่าน router ทันที
-    if (!profile || !isUserAdmin) {
+    const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
+
+    if (!isUserAdmin) {
       addToast('คุณไม่มีสิทธิ์เข้าถึงหน้านี้', 'error');
       router.push('/dashboard');
     }
-  }, [profile, isLoading, router]);
+  }, [profile, user, isLoading, router]);
 
   // ฟังก์ชันดึงข้อมูลดั้งเดิมของระบบ
   const fetchData = async () => {
@@ -104,11 +102,11 @@ function AdminContent() {
   useEffect(() => {
     if (isLoading) return;
 
-    const isUserAdmin = profile?.is_super_admin || profile?.email === 'overconda@gmail.com';
-    if (!profile || !isUserAdmin) return;
+    const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
+    if (!isUserAdmin) return;
 
     fetchData();
-  }, [profile, isLoading, activeTab]);
+  }, [profile, user, isLoading, activeTab]);
 
   const handleUpdateTier = async (userId: string, tier: string) => {
     const { error } = await supabase.from('profiles').update({ tier }).eq('id', userId);

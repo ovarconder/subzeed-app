@@ -13,62 +13,51 @@ import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 
 export default function DashboardPage() {
-  const router = useRouter(); // นำมารับมือกับการย้ายหน้าภายใน Next.js app
-  const { profile, user } = useAuth();
+  const router = useRouter();
+  const { profile, user, isLoading } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
-  // ─── Super Admin → redirect to /admin ──────────────
+  // ─── Admin Guard + Redirect ─────────────────────────
   useEffect(() => {
-    // ใช้ router.push แทน window.location.href เพื่อไม่ให้หลุด Base Path (/subzeed)
-    if (profile?.is_super_admin || profile?.email === 'overconda@gmail.com') {
+    if (isLoading) return; // รอให้ auth/profile โหลดเสร็จก่อนเสมอ
+
+    const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
+
+    if (isUserAdmin) {
       router.push('/admin?tab=settings');
-      return;
+      return; // จบการทำงาน ห้ามทำอะไรต่อ
     }
+  }, [profile, user, isLoading, router]);
 
-    // แก้ไขจุดนี้: ใส่ Type กำกับไว้ที่โครงสร้างรีเทิร์น ({ data }: { data: any }) เพื่อผ่านการเช็กของ TypeScript
-    if (profile?.email === 'overconda@gmail.com' && !profile.is_super_admin) {
-      supabase
-        .from('profiles')
-        .select('is_super_admin')
-        .eq('id', profile.id)
-        .single()
-        .then(({ data }: { data: { is_super_admin: boolean } | null }) => {
-          if (data?.is_super_admin) {
-            router.push('/admin?tab=settings');
-          }
-        });
-    }
-  }, [profile, router]);
-
+  // ─── โหลดโปรเจกต์ (สำหรับผู้ใช้ทั่วไปเท่านั้น) ────────
   useEffect(() => {
-    // หากเป็นแอดมิน ไม่ต้องโหลดข้อมูลโปรเจกต์ผู้ใช้ทั่วไป
-    if (!profile || profile.is_super_admin || profile.email === 'overconda@gmail.com') {
+    if (isLoading) return;
+
+    const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
+    if (isUserAdmin || !profile) {
       setLoading(false);
-      return;
+      return; // แอดมินไม่ต้องโหลดโปรเจกต์
     }
-    
+
     supabase
       .from('projects')
       .select('*')
       .eq('user_id', profile.id)
       .order('updated_at', { ascending: false })
-      // แก้ไขจุดนี้: ใส่ Type ครอบให้กับตัวแปร result 
       .then((result: { data: Project[] | null }) => {
         if (result.data) setProjects(result.data);
         setLoading(false);
       });
-  }, [profile]);
+  }, [profile, user, isLoading]);
 
-  // ซ่อนการแสดงผลชั่วคราวหากกำลังทำการตรวจสอบและโยกย้ายหน้าของ Admin
+  // ─── ซ่อนหน้า Dashboard กรณียังโหลดสิทธิ์ หรือเป็นแอดมินที่กำลังถูก redirect ──
   const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
-  if (isUserAdmin) {
+  if (isLoading || isUserAdmin) {
     return (
       <div className="flex h-screen w-screen flex-col items-center justify-center bg-background">
-        
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-        
       </div>
     );
   }

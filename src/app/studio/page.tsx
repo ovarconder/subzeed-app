@@ -61,7 +61,7 @@ export default function StudioPage() {
       URL.revokeObjectURL(tempVideo.src);
     };
     tempVideo.src = URL.createObjectURL(file);
-  }, [tierConfig]);
+  }, [tierConfig, addToast]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -71,11 +71,18 @@ export default function StudioPage() {
 
   // ---- Enhanced Transcription (ใช้ audio-extractor + transcribe-and-save) ----
   const handleTranscribe = async () => {
-    if (!store.videoFile || !user) return;
+    if (!store.videoFile) {
+      addToast('กรุณาเลือกวิดีโอก่อน', 'warning');
+      return;
+    }
+    if (!user) {
+      addToast('กรุณาเข้าสู่ระบบก่อนใช้งาน', 'warning');
+      return;
+    }
 
     const estimatedMinutes = Math.ceil(videoDuration / 60);
     if (estimatedMinutes > quotaLeft) {
-      addToast('โควตาไม่เพียงพอ กรุณาเติมเงิน', 'error');
+      addToast(`โควตาไม่เพียงพอ ต้องการ ${estimatedMinutes} นาที แต่มี ${quotaLeft.toFixed(1)} นาที`, 'error');
       return;
     }
 

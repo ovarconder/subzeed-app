@@ -2,6 +2,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { useRouter } from 'next/navigation';
 import { TIER_CONFIGS } from '@/lib/types';
@@ -11,6 +12,7 @@ export function Navbar() {
   const { user, profile, signOut } = useAuth();
   const { config: siteConfig } = useSiteConfig();
   const router = useRouter();
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const tierLabel = profile?.tier ? TIER_CONFIGS[profile.tier]?.name : 'Free';
   const quotaLeft = profile
@@ -80,9 +82,12 @@ export function Navbar() {
                 <span>{quotaLeft.toFixed(1)} นาที</span>
               </div>
 
-              <div className="relative group">
+              <div className="relative"
+                onMouseEnter={() => setAccountOpen(true)}
+                onMouseLeave={() => setAccountOpen(false)}>
                 <button className="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
-                  style={{ backgroundColor: 'var(--sz-surface)' }}>
+                  style={{ backgroundColor: 'var(--sz-surface)' }}
+                  onClick={() => setAccountOpen(prev => !prev)}>
                   <div className="h-6 w-6 rounded-full flex items-center justify-center text-white text-xs"
                     style={{ backgroundColor: 'var(--sz-primary)' }}>
                     {user.email?.charAt(0).toUpperCase()}
@@ -91,9 +96,9 @@ export function Navbar() {
                     {user.email?.split('@')[0]}
                   </span>
                 </button>
-                <div className="absolute right-0 mt-2 w-48 origin-top-right scale-95 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all rounded-lg border shadow-lg bg-white"
-                  style={{ borderColor: 'var(--sz-border)' }}>
-                  <div className="py-1">
+                {accountOpen && (
+                  <div className="absolute right-0 mt-2 w-48 origin-top-right rounded-lg border shadow-lg bg-white py-1 z-50"
+                    style={{ borderColor: 'var(--sz-border)' }}>
                     <Link href="/dashboard" className="block px-4 py-2 text-sm hover:bg-surface"
                       style={{ color: 'var(--sz-text)' }}>
                       Dashboard
@@ -110,7 +115,7 @@ export function Navbar() {
                       ออกจากระบบ
                     </button>
                   </div>
-                </div>
+                )}
               </div>
             </>
           ) : (

@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toaster';
+import ImageUpload from '@/components/ui/image-upload';
 import type { SiteConfig } from '@/lib/site-config';
 
 // ============================================================
@@ -207,20 +208,24 @@ export default function SiteSettings({ onRefresh }: Props) {
               value={config.brand.slogan}
               onChange={(e) => updateField('brand', 'slogan', e.target.value)}
             />
-            <Input
-              label="โลโก้ Desktop (path)"
+            <ImageUpload
+              label="โลโก้ Desktop"
               value={config.brand.logo}
-              onChange={(e) => updateField('brand', 'logo', e.target.value)}
+              onChange={(v) => updateField('brand', 'logo', v)}
+              folder="logos"
             />
-            <Input
-              label="โลโก้ Mobile (path)"
+            <ImageUpload
+              label="โลโก้ Mobile"
               value={config.brand.logoMobile}
-              onChange={(e) => updateField('brand', 'logoMobile', e.target.value)}
+              onChange={(v) => updateField('brand', 'logoMobile', v)}
+              folder="logos"
             />
-            <Input
-              label="Favicon (path)"
+            <ImageUpload
+              label="Favicon"
               value={config.brand.favicon}
-              onChange={(e) => updateField('brand', 'favicon', e.target.value)}
+              onChange={(v) => updateField('brand', 'favicon', v)}
+              folder="favicons"
+              accept="image/x-icon,image/png,image/svg+xml"
             />
           </div>
         )}
@@ -270,10 +275,11 @@ export default function SiteSettings({ onRefresh }: Props) {
               value={config.theme.cardGradient}
               onChange={(e) => updateField('theme', 'cardGradient', e.target.value)}
             />
-            <Input
-              label="Background Image (URL)"
+            <ImageUpload
+              label="Background Image"
               value={config.theme.backgroundImage || ''}
-              onChange={(e) => updateField('theme', 'backgroundImage', e.target.value || undefined)}
+              onChange={(v) => updateField('theme', 'backgroundImage', v || undefined)}
+              folder="backgrounds"
             />
           </div>
         )}

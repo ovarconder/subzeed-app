@@ -38,7 +38,10 @@ export default function Reports() {
     setLoading(true);
     try {
       // ใช้ API route ที่มี auth guard อยู่แล้ว
-        fetch('/api/admin/quota-logs'),
+      const [usersRes, billingRes, logsRes] = await Promise.all([
+        fetch(api('/api/admin/users')),
+        fetch(api('/api/admin/billing')),
+        fetch(api('/api/admin/quota-logs')),
       ]);
 
       const users: Profile[] = usersRes.ok ? (await usersRes.json()).users || [] : [];

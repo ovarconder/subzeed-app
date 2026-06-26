@@ -7,16 +7,19 @@ import { TIER_CONFIGS, type SubscriptionTier, type SubtitleEntry } from '@/lib/t
 // ============================================================
 // POST /api/transcribe-and-save
 //
-// รับ audio + metadata → ถอดความ → หัก Quota → ตรวจ vocab (Gemini) → Save Project
+// รับ audio + metadata → ถอดความ → หัก Quota → ตรวจ vocab (Gemini)
+// → AI แปลภาษา (ถ้าเปิดใช้) → Save Project
 //
 // Body: FormData
 //   - audio: Blob (WAV 16kHz mono)
 //   - userId: string
 //   - projectTitle?: string
 //   - enableAiVocab?: 'true' | 'false'
+//   - enableAiSmart?: 'true' | 'false'     ← NEW: AI แปลภาษา
+//   - aiSmartLanguage?: string              ← NEW: ภาษาเป้าหมาย (default 'en')
 //   - brandTerms?: string (JSON array, e.g. '["SubZeed","CP"]')
 //
-// Response: { projectId, segments, text, subtitles, duration, quotaUsed }
+// Response: { projectId, segments, text, subtitles, duration, quotaUsed, aiSmartApplied }
 // ============================================================
 
 export async function POST(request: NextRequest) {
@@ -26,6 +29,8 @@ export async function POST(request: NextRequest) {
     const userId = formData.get('userId') as string | null;
     const projectTitle = (formData.get('projectTitle') as string) || 'วิดีโอไม่มีชื่อ';
     const enableAiVocab = formData.get('enableAiVocab') === 'true';
+    const enableAiSmart = formData.get('enableAiSmart') === 'true';
+    const aiSmartLanguage = (formData.get('aiSmartLanguage') as string) || 'en';
     const brandTermsRaw = formData.get('brandTerms') as string | null;
 
     if (!audioFile || !userId) {
@@ -168,7 +173,56 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ─── 6. หัก Quota ─────────────────────────────────
+    // ─── 6. AI Smart (Translation) — ถ้า Premium ขึ้นไป ─
+    let aiSmartApplied = false;
+    if (enableAiSmart && profile.tier !== 'free' && profile.tier !== 'basic') {
+      try {
+        // ใช้ processAISmart จาก api-providers ถ้ามี หรือเรียก Gemini โดยตรง
+        const langName = getLanguageName(aiSmartLanguage);
+        const translationPrompt = `คุณคือผู้เชี่ยวชาญด้านการแปลภาษา กรุณาแปลข้อความซับไตเติลภาษาไทยด้านล่างเป็นภาษา${langName} โดยคงความหมายเดิม รักษาคำเฉพาะ/ชื่อเฉพาะไว้ (เช่น SubZeed, ชื่อคน, ชื่อแบรนด์) และปรับให้เป็นภาษาธรรมชาติที่เข้าใจง่าย
+
+ให้ตอบกลับเป็น JSON array ที่มีฟิลด์ "id" (id เดิม), "original", "translated"
+
+ข้อความซับไตเติล:
+${JSON.stringify(subtitles.map((s) => ({ id: s.id, text: s.text })))}`;
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/gemini-vocab`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              subtitles: subtitles.map((s) => ({ id: s.id, text: s.text })),
+              brandTerms: [],
+              translationMode: true,
+              targetLanguage: aiSmartLanguage,
+              targetLanguageName: langName,
+            }),
+          }
+        );
+
+        if (response.ok) {
+          const { corrections } = await response.json();
+          if (corrections && corrections.length > 0) {
+            subtitles = subtitles.map((sub) => {
+              const correction = corrections.find(
+                (c: any) => c.id === sub.id || c.original === sub.text
+              );
+              if (correction && correction.translated && correction.translated !== sub.text) {
+                return { ...sub, text: correction.translated };
+              }
+              return sub;
+            });
+            aiSmartApplied = true;
+          }
+        }
+      } catch (aiErr) {
+        console.warn('[transcribe-and-save] AI Smart translation error (non-fatal):', aiErr);
+        // ไม่ล้มเหลวทั้งกระบวนการ แค่ข้ามไป
+      }
+    }
+
+    // ─── 7. หัก Quota ─────────────────────────────────
     const newUsed = profile.quota_minutes_used + usedMinutes;
     await serviceSupabase
       .from('profiles')
@@ -178,7 +232,7 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', userId);
 
-    // ─── 7. Save Project ──────────────────────────────
+    // ─── 8. Save Project ──────────────────────────────
     const { data: project, error: projectError } = await serviceSupabase
       .from('projects')
       .insert({
@@ -197,7 +251,7 @@ export async function POST(request: NextRequest) {
       console.error('[transcribe-and-save] Save project error:', projectError);
     }
 
-    // ─── 8. Log ───────────────────────────────────────
+    // ─── 9. Log ───────────────────────────────────────
     await serviceSupabase.from('quota_activity_logs').insert({
       user_id: userId,
       project_id: project?.id || null,
@@ -217,6 +271,8 @@ export async function POST(request: NextRequest) {
       quotaUsed: usedMinutes,
       quotaLeft: profile.quota_minutes_total - newUsed,
       aiVocabApplied: enableAiVocab && profile.tier !== 'free' && profile.tier !== 'basic',
+      aiSmartApplied,
+      aiSmartLanguage: aiSmartApplied ? aiSmartLanguage : undefined,
     });
   } catch (error: any) {
     console.error('[transcribe-and-save] Error:', error);
@@ -225,4 +281,29 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * แปลงรหัสภาษา (ISO 639-1) เป็นชื่อภาษาไทย
+ */
+function getLanguageName(code: string): string {
+  const map: Record<string, string> = {
+    en: 'อังกฤษ',
+    zh: 'จีน',
+    ja: 'ญี่ปุ่น',
+    ko: 'เกาหลี',
+    vi: 'เวียดนาม',
+    ms: 'มาเลย์',
+    fr: 'ฝรั่งเศส',
+    de: 'เยอรมัน',
+    es: 'สเปน',
+    ar: 'อาหรับ',
+    pt: 'โปรตุเกส',
+    ru: 'รัสเซีย',
+    it: 'อิตาลี',
+    hi: 'ฮินดี',
+    th: 'ไทย',
+    id: 'อินโดนีเซีย',
+  };
+  return map[code] || code;
 }

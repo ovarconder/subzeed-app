@@ -30,6 +30,8 @@ export default function StudioPage() {
   const [videoDuration, setVideoDuration] = useState(0);
   const [brandTerms, setBrandTerms] = useState('');
   const [enableAiVocab, setEnableAiVocab] = useState(false);
+  const [enableAiSmart, setEnableAiSmart] = useState(false); // AI แปลภาษา
+  const [aiSmartLanguage, setAiSmartLanguage] = useState('en'); // ภาษาเป้าหมาย
   const [showWatermarkPreview, setShowWatermarkPreview] = useState(false);
 
   // Check quota
@@ -37,6 +39,9 @@ export default function StudioPage() {
   const quotaLeft = profile ? profile.quota_minutes_total - profile.quota_minutes_used : 0;
   const isFree = profile?.tier === 'free';
   const isPremiumOrUp = profile?.tier === 'premium' || profile?.tier === 'business_starter' || profile?.tier === 'business_pro';
+  // ตรวจสอบว่า tier นี้มีสิทธิ์ใช้ AI Smart (Translation) หรือไม่
+  const hasAiSmart = profile ? TIER_CONFIGS[profile.tier]?.aiVocabulary : false;
+  const hasAiVocab = profile ? TIER_CONFIGS[profile.tier]?.aiVocabulary : false;
 
   // ---- Video Handling ----
   const handleFileSelect = useCallback((file: File) => {
@@ -113,6 +118,8 @@ export default function StudioPage() {
       formData.append('userId', user.id);
       formData.append('projectTitle', store.videoFile.name);
       formData.append('enableAiVocab', enableAiVocab ? 'true' : 'false');
+      formData.append('enableAiSmart', enableAiSmart ? 'true' : 'false');
+      formData.append('aiSmartLanguage', aiSmartLanguage);
       formData.append('brandTerms', JSON.stringify(
         brandTerms.split(',').map(s => s.trim()).filter(Boolean)
       ));
@@ -162,7 +169,8 @@ export default function StudioPage() {
       });
 
       const vocabMsg = data.aiVocabApplied ? ' + AI Vocabulary' : '';
-      addToast(`ถอดความสำเร็จ! ${newSubtitles.length} รายการ${vocabMsg}`, 'success');
+      const smartMsg = data.aiSmartApplied ? ` + AI แปล(${data.aiSmartLanguage || 'en'})` : '';
+      addToast(`ถอดความสำเร็จ! ${newSubtitles.length} รายการ${vocabMsg}${smartMsg}`, 'success');
     } catch (err: any) {
       addToast(`เกิดข้อผิดพลาด: ${err.message}`, 'error');
     } finally {
@@ -283,18 +291,23 @@ export default function StudioPage() {
               </>
             )}
 
-            {/* AI Vocab Toggle (Premium+) */}
-            {isPremiumOrUp && (
-              <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={enableAiVocab}
-                  onChange={(e) => setEnableAiVocab(e.target.checked)}
-                  className="accent-primary"
-                />
-                AI Vocab
-              </label>
-            )}
+            {/* ─── AI Features Toggle ─────────────────── */}
+            {/* AI Vocab (ตรวจคำศัพท์/พิสูจน์อักษร) */}
+            <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${
+              hasAiVocab ? 'text-text-secondary' : 'text-text-secondary/40 cursor-not-allowed'
+            }`}>
+              <input
+                type="checkbox"
+                checked={enableAiVocab}
+                disabled={!hasAiVocab}
+                onChange={(e) => {
+                  if (hasAiVocab) setEnableAiVocab(e.target.checked);
+                }}
+                className="accent-primary"
+              />
+              AI Vocab
+              {!hasAiVocab && <span className="text-warning/60 text-[10px]" title='เฉพาะ Premium ขึ้นไป'>🔒</span>}
+            </label>
 
             {/* Brand Terms Input */}
             {enableAiVocab && (
@@ -305,6 +318,43 @@ export default function StudioPage() {
                 placeholder="คำแบรนด์ (เช่น SubZeed, CP)"
                 className="w-40 rounded border border-border px-2 py-1 text-xs"
               />
+            )}
+
+            {/* AI Smart (แปลภาษา) */}
+            <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${
+              hasAiSmart ? 'text-text-secondary' : 'text-text-secondary/40 cursor-not-allowed'
+            }`}>
+              <input
+                type="checkbox"
+                checked={enableAiSmart}
+                disabled={!hasAiSmart}
+                onChange={(e) => {
+                  if (hasAiSmart) setEnableAiSmart(e.target.checked);
+                }}
+                className="accent-primary"
+              />
+              AI แปล
+              {!hasAiSmart && <span className="text-warning/60 text-[10px]" title='เฉพาะ Premium ขึ้นไป'>🔒</span>}
+            </label>
+
+            {/* ภาษาเป้าหมาย (AI Smart) */}
+            {enableAiSmart && (
+              <select
+                value={aiSmartLanguage}
+                onChange={(e) => setAiSmartLanguage(e.target.value)}
+                className="w-28 rounded border border-border px-2 py-1 text-xs bg-white"
+              >
+                <option value="en">🇬🇧 อังกฤษ</option>
+                <option value="zh">🇨🇳 จีน</option>
+                <option value="ja">🇯🇵 ญี่ปุ่น</option>
+                <option value="ko">🇰🇷 เกาหลี</option>
+                <option value="vi">🇻🇳 เวียดนาม</option>
+                <option value="ms">🇲🇾 มาเลย์</option>
+                <option value="fr">🇫🇷 ฝรั่งเศส</option>
+                <option value="de">🇩🇪 เยอรมัน</option>
+                <option value="es">🇪🇸 สเปน</option>
+                <option value="ar">🇸🇦 อาหรับ</option>
+              </select>
             )}
 
             <div className="ml-auto text-sm text-text-secondary flex items-center gap-3">

@@ -13,10 +13,11 @@ import UsersTable from '@/components/admin/UsersTable';
 import BillingTable from '@/components/admin/BillingTable';
 import FingerprintsTable from '@/components/admin/FingerprintsTable';
 import SiteSettings from '@/components/admin/SiteSettings';
+import ApiConfig from '@/components/admin/ApiConfig';
 import Reports from '@/components/admin/Reports';
 import type { Profile, BillingHistory } from '@/lib/types';
 
-type TabType = 'users' | 'abusers' | 'billing' | 'fingerprints' | 'settings' | 'reports';
+type TabType = 'users' | 'abusers' | 'billing' | 'fingerprints' | 'settings' | 'api-config' | 'reports';
 
 const TABS: { key: TabType; label: string }[] = [
   { key: 'users', label: '👥 ผู้ใช้' },
@@ -25,6 +26,7 @@ const TABS: { key: TabType; label: string }[] = [
   { key: 'fingerprints', label: '🖐️ Fingerprint' },
   { key: 'reports', label: '📊 รายงาน' },
   { key: 'settings', label: '⚙️ ตั้งค่าเว็บ' },
+  { key: 'api-config', label: '🎛️ ตั้งค่า API' },
 ];
 
 export default function AdminPage() {
@@ -189,6 +191,7 @@ function AdminContent() {
         </div>
 
         {activeTab === 'settings' && <SiteSettings onRefresh={fetchData} />}
+        {activeTab === 'api-config' && <ApiConfig />}
         {activeTab === 'reports' && <Reports />}
 
         {(activeTab === 'users' || activeTab === 'abusers') && (

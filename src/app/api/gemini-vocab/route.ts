@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { subtitles, brandTerms } = await request.json();
+    const { subtitles, brandTerms, translationMode, targetLanguage, targetLanguageName } = await request.json();
 
     if (!subtitles || !Array.isArray(subtitles)) {
       return NextResponse.json({ error: 'Invalid subtitles' }, { status: 400 });
@@ -13,13 +13,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 });
     }
 
-    // Build prompt for Gemini
-    const subtitleTexts = subtitles.map((s: any) => s.text).join('\n');
-    const brandHint = brandTerms?.length
-      ? `คำสำคัญที่ต้องคงไว้: ${brandTerms.join(', ')}`
-      : '';
+    // ─── เลือก Prompt ตามโหมด ──────────────────────────
+    let prompt: string;
 
-    const prompt = `
+    if (translationMode) {
+      // โหมดแปลภาษา
+      const langName = targetLanguageName || targetLanguage || 'อังกฤษ';
+      const subtitleJson = JSON.stringify(
+        subtitles.map((s: any) => ({ id: s.id, text: s.text }))
+      );
+
+      prompt = `
+คุณคือนักแปลภาษามืออาชีพ
+กรุณาแปลข้อความซับไตเติลภาษาไทยด้านล่างเป็นภาษา${langName}:
+
+กฎการแปล:
+- แปลให้เป็นภาษาธรรมชาติที่เข้าใจง่าย
+- รักษาคำเฉพาะ/ชื่อเฉพาะ/ชื่อแบรนด์ไว้ (เช่น SubZeed, ชื่อคน, ชื่อบริษัท)
+- รักษาความหมายเดิมให้ครบถ้วน
+- ถ้าเป็นคำอุทานหรือเสียง ให้คงไว้หรือหา equivalent ที่เหมาะสม
+
+ตอบกลับเป็น JSON array เท่านั้น (ห้ามมีข้อความอื่นนอกจาก JSON):
+[
+  { "id": "sub-xxx", "original": "ข้อความต้นทาง", "translated": "ข้อความที่แปลแล้ว" },
+  ...
+]
+
+ข้อความซับไตเติล:
+${subtitleJson}
+`;
+    } else {
+      // โหมดตรวจคำศัพท์ (เดิม)
+      const subtitleTexts = subtitles.map((s: any) => s.text).join('\n');
+      const brandHint = brandTerms?.length
+        ? `คำสำคัญที่ต้องคงไว้: ${brandTerms.join(', ')}`
+        : '';
+
+      prompt = `
 คุณคือผู้ช่วยตรวจคำซับไตเติลภาษาไทย
 กรุณาตรวจสอบข้อความด้านล่าง:
 ${brandHint ? `- รักษาคำแบรนด์/ชื่อ: ${brandTerms.join(', ')}` : ''}
@@ -30,6 +60,7 @@ ${brandHint ? `- รักษาคำแบรนด์/ชื่อ: ${brandTe
 ข้อความซับไตเติล:
 ${subtitleTexts}
 `;
+    }
 
     const geminiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
@@ -39,8 +70,8 @@ ${subtitleTexts}
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 2048,
+            temperature: translationMode ? 0.3 : 0.2,
+            maxOutputTokens: 4096,
           },
         }),
       }
@@ -61,7 +92,7 @@ ${subtitleTexts}
 
     return NextResponse.json({ corrections });
   } catch (error: any) {
-    console.error('Gemini vocab error:', error);
+    console.error('Gemini vocab/translation error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

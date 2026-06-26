@@ -25,6 +25,8 @@
 
 - [ ] อ่าน `docs/subzeed-blueprint.md` — ทำความเข้าใจ Big Picture
 - [ ] อ่าน `docs/anti-abuse-fingerprint.md` — ทำความเข้าใจระบบ Anti-Abuse
+- [ ] อ่าน `docs/dynamic-api-providers.md` — ระบบ Dynamic API Config
+- [ ] อ่าน `docs/ai-smart-translation.md` — ระบบ AI แปลภาษา
 - [ ] อ่าน `docs/lessons-learned-workflow.md` — บทเรียน (ไฟล์นี้)
 - [ ] เรียก `ls` ดูโครงสร้างไฟล์ที่มีอยู่แล้ว
 - [ ] ตรวจสอบว่า `node_modules` และ `.env.local` มีอยู่หรือไม่
@@ -47,10 +49,10 @@
 | Client Review | ✅ พร้อม | `src/app/review/[token]/` |
 | Stripe Payment | ✅ พร้อม | Checkout + Webhook + Dev Mode — `docs/payment-stripe.md` |
 | Whisper API | ✅ พร้อม | `src/app/api/transcribe/` |
-| Gemini API | ✅ พร้อม | `src/app/api/gemini-vocab/` |
+| Gemini API | ✅ พร้อม | `src/app/api/gemini-vocab/` — รองรับทั้ง Vocab + Translation |
 | Fingerprint Anti-Abuse | ✅ พร้อม | Migration + Routes + Hook |
-| SQL Schema | ✅ พร้อม | `supabase/` |
-| Admin Dashboard | ✅ พร้อม | 4 tabs + 5 API routes — `docs/admin-dashboard.md` |
+| SQL Schema | ✅ พร้อม | `supabase/` — 5 migration files |
+| Admin Dashboard | ✅ พร้อม | 5 tabs + User/Abuser/Billing/Fingerprint/Settings/API Config + Reports — `docs/admin-dashboard.md` |
 | Invoice PDF Gen | ✅ พร้อม | Client-side jspdf + Server fallback HTML — `docs/invoice-pdf.md` |
 | **FingerprintJS Library** | ⏳ **ยังไม่ติดตั้ง** | ต้อง `npm install @fingerprintjs/fingerprintjs` |
 | **Env Config (.env.local)** | ⏳ **ยังไม่มี** | ดู `docs/env-config.md` |
@@ -60,6 +62,8 @@
 | **Thai STT Pipeline** | ✅ พร้อม | `transcribe` + `transcribe-and-save` — Quota check + หักอัตโนมัติ |
 | **SRT/VTT Export** | ✅ พร้อม | Export JSON → SRT |
 | **Vercel Deploy Config** | ✅ พร้อม | `vercel.json` + `docs/env-config.md` |
+| **Dynamic API Provider** | ✅ พร้อม | `docs/dynamic-api-providers.md` — Admin เปลี่ยน Provider/Key ได้ผ่าน UI |
+| **AI Smart Translation** | ✅ พร้อม | `docs/ai-smart-translation.md` — แปลซับเป็น 10 ภาษาผ่าน Gemini |
 
 ---
 
@@ -90,4 +94,4 @@ vercel --prod
 
 ---
 
-_อัปเดตล่าสุด: รอบที่ 2 — STT Pipeline + Watermark + Text Animation + Deploy Config_
+_อัปเดตล่าสุด: รอบที่ 3 — Dynamic API Provider + AI Smart Translation + Docs_

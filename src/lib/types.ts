@@ -171,3 +171,74 @@ export interface StripePrice {
   priceId: string;
   amount: number;
 }
+
+// ============================================================
+// 🎛️ API PROVIDER TYPES — Dynamic Provider Config
+// ============================================================
+
+/** Supported STT providers */
+export type SttProvider = 'openai' | 'groq';
+
+/** Supported LLM providers */
+export type LlmProvider = 'openai' | 'gemini' | 'groq';
+
+/** API provider entry (from DB) */
+export interface ApiProvider {
+  id: string;
+  service_type: 'stt' | 'llm';
+  provider: SttProvider | LlmProvider;
+  model: string;
+  api_key_encrypted: string | null;
+  is_active: boolean;
+  label: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Sanitized provider info (no key) for client-side display */
+export interface ApiProviderInfo {
+  id: string;
+  service_type: 'stt' | 'llm';
+  provider: string;
+  model: string;
+  is_active: boolean;
+  label: string | null;
+  has_key: boolean;
+  updated_at: string;
+}
+
+/** Payload for saving API provider settings */
+export interface ApiProviderPayload {
+  service_type: 'stt' | 'llm';
+  provider: string;
+  model: string;
+  api_key?: string; // plaintext from form → encrypted server-side
+  is_active?: boolean;
+}
+
+/** Supported model options per provider */
+export const STT_PROVIDER_OPTIONS: Record<SttProvider, { label: string; models: string[] }> = {
+  openai: {
+    label: 'OpenAI Whisper',
+    models: ['whisper-1'],
+  },
+  groq: {
+    label: 'Groq Whisper',
+    models: ['whisper-large-v3', 'whisper-large-v3-turbo'],
+  },
+};
+
+export const LLM_PROVIDER_OPTIONS: Record<LlmProvider, { label: string; models: string[] }> = {
+  openai: {
+    label: 'OpenAI',
+    models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
+  },
+  gemini: {
+    label: 'Google Gemini',
+    models: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'],
+  },
+  groq: {
+    label: 'Groq',
+    models: ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'qwen/qwen3-32b', 'mixtral-8x7b-32768'],
+  },
+};

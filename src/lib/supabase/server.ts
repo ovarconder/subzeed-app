@@ -1,19 +1,22 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import type { RequestCookies } from 'next/dist/compiled/@edge-runtime/cookies';
 
 export const createServerSupabase = async () => {
   const cookieStore = await cookies();
+
+  // ใช้ domain ตาม production environment (ถ้าเป็น localhost ไม่ต้อง set domain)
+  const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+  const domain = isProd ? 'overconda.space' : undefined;
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookieOptions: {
-        domain: 'overconda.space', // apex domain → ตรงกับ client.ts
+        ...(domain ? { domain } : {}),
         path: '/',
         sameSite: 'lax' as const,
-        secure: true,
+        secure: isProd,
       },
       cookies: {
         getAll() {
@@ -31,12 +34,4 @@ export const createServerSupabase = async () => {
       },
     }
   );
-};
-
-export const createServiceSupabase = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-  const { createClient } = require('@supabase/supabase-js');
-  return createClient(supabaseUrl, serviceRoleKey);
 };

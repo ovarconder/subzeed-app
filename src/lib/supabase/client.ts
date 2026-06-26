@@ -36,12 +36,14 @@ export const createClient = () => {
   }
 
   const { createBrowserClient } = require('@supabase/ssr');
+  const isProd = typeof window !== 'undefined' && 
+    (window.location.hostname === 'overconda.space' || window.location.hostname.endsWith('.overconda.space'));
   supabaseInstance = createBrowserClient(supabaseUrl, supabaseAnonKey, {
     cookieOptions: {
-      domain: 'overconda.space', // apex domain → share ได้ทั้ง overconda.space และ www.overconda.space
+      ...(isProd ? { domain: 'overconda.space' } : {}),
       path: '/',
       sameSite: 'lax' as const,
-      secure: true,
+      secure: isProd,
     },
   });
   return supabaseInstance;

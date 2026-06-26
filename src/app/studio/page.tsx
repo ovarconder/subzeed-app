@@ -379,29 +379,31 @@ export default function StudioPage() {
                   controls
                   className="max-w-full max-h-full"
                 />
-                {/* Canvas for Watermark overlay (Free tier) */}
-                <canvas
-                  ref={canvasRef}
-                  className="absolute inset-0 pointer-events-none"
-                  style={{ width: '100%', height: '100%' }}
-                />
-                {/* Subtitle Overlay */}
-                {currentSub && (
-                  <div
-                    className="subtitle-overlay"
-                    style={{
-                      bottom: `${currentSub.y_offset}%`,
-                      animation: store.currentTime >= currentSub.start ? 'subtitleFadeIn 0.2s ease-out' : 'none',
-                    }}
-                  >
-                    <span
-                      className="inline-block bg-black/60 px-4 py-2 rounded-lg text-white text-xl"
-                      style={{ fontFamily: tierConfig.fonts[0] || 'Arial' }}
+                {/* Subtitle + Watermark Container — absolute ปักกับ parent ไม่ดัน video */}
+                <div className="absolute inset-0 pointer-events-none">
+                  {/* Canvas for Watermark overlay (Free tier) */}
+                  <canvas
+                    ref={canvasRef}
+                    className="absolute inset-0"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                  {/* Subtitle Overlay — fixed bottom */}
+                  {currentSub && (
+                    <div
+                      className="absolute left-0 right-0 bottom-[10%] flex justify-center"
+                      style={{
+                        animation: store.currentTime >= currentSub.start ? 'subtitleFadeIn 0.2s ease-out' : 'none',
+                      }}
                     >
-                      {currentSub.text}
-                    </span>
-                  </div>
-                )}
+                      <span
+                        className="inline-block bg-black/60 px-4 py-2 rounded-lg text-white text-xl text-center max-w-[80%]"
+                        style={{ fontFamily: tierConfig.fonts[0] || 'Arial' }}
+                      >
+                        {currentSub.text}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="text-center text-white/60">
@@ -456,7 +458,7 @@ export default function StudioPage() {
                   <div>
                     <p className="mb-3">กดปุ่มด้านล่างเพื่อถอดความอัตโนมัติ</p>
                     <Button size="sm" onClick={handleTranscribe} loading={store.isProcessing}>
-                      🎤 ถอดความด้วย AI
+                      🎤 ถอดเสียงเป็น Subtitle
                     </Button>
                   </div>
                 ) : (

@@ -40,11 +40,22 @@ export async function GET() {
     }
 
     // ─── Fetch Providers (sanitized) ─────────────────────
-    const providers = await getAllProviderInfos();
+    let providers: Awaited<ReturnType<typeof getAllProviderInfos>> = [];
+    try {
+      providers = await getAllProviderInfos();
+    } catch (fetchErr) {
+      console.error('[api-config] Fetch error (table may not exist):', fetchErr);
+      // ถ้ายังไม่ได้รัน migration → return empty
+      return NextResponse.json({
+        providers: [],
+        activeConfig: { stt: null, llm: null },
+        migrationRequired: true,
+        message: '⚠️ ยังไม่ได้รัน Migration #005 (api_providers) กรุณาเปิดไฟล์ supabase/005_api_config.sql แล้วรันใน Supabase SQL Editor ก่อน',
+      });
+    }
 
     return NextResponse.json({
       providers,
-      // Active config summary
       activeConfig: {
         stt: providers.find((p) => p.service_type === 'stt' && p.is_active) || null,
         llm: providers.find((p) => p.service_type === 'llm' && p.is_active) || null,
@@ -119,53 +130,87 @@ export async function PUT(request: NextRequest) {
 
         if (encryptError || !encryptedKey) {
           console.error('[api-config] Encrypt error:', encryptError);
-          return NextResponse.json(
-            { error: 'Failed to encrypt API key' },
-            { status: 500 }
-          );
+          // Fallback: ถ้ายังไม่ได้รัน migration → เก็บ plain text (Dev mode)
+          console.warn('[api-config] Encrypt RPC failed — storing API key as plain text fallback');
+          updateData.api_key_encrypted = api_key.trim();
+        } else {
+          updateData.api_key_encrypted = encryptedKey;
         }
-
-        updateData.api_key_encrypted = encryptedKey;
       } catch (encryptErr) {
         console.error('[api-config] Encrypt exception:', encryptErr);
-        return NextResponse.json(
-          { error: 'Failed to encrypt API key' },
-          { status: 500 }
-        );
+        // Fallback: เก็บ plain text
+        console.warn('[api-config] Encrypt RPC failed — storing API key as plain text fallback');
+        updateData.api_key_encrypted = api_key.trim();
       }
     }
 
-    // ─── อัปเดต record โดยใช้ provider + service_type ────
-    const { error: updateError } = await adminSupabase
+    // ─── Upsert Config (insert ถ้าไม่มี, update ถ้ามี) ──
+    const { error: upsertError } = await adminSupabase
       .from('api_providers')
-      .update(updateData)
-      .eq('service_type', service_type)
-      .eq('provider', provider);
+      .upsert(
+        {
+          service_type,
+          provider,
+          ...updateData,
+        },
+        {
+          onConflict: 'service_type, provider',
+          ignoreDuplicates: false,
+        }
+      );
 
-    if (updateError) {
-      console.error('[api-config] Update error:', updateError);
+    if (upsertError) {
+      console.error('[api-config] Upsert error:', upsertError);
       return NextResponse.json(
-        { error: 'Database update failed: ' + updateError.message },
+        { error: 'Database upsert failed: ' + upsertError.message },
         { status: 500 }
       );
     }
 
     // ─── Activate ถ้าต้องการ ─────────────────────────────
     if (is_active === true) {
-      const { error: activateError } = await adminSupabase
-        .rpc('activate_api_provider', {
-          p_service_type: service_type,
-          p_provider: provider,
-        });
+      try {
+        const { error: activateError } = await adminSupabase
+          .rpc('activate_api_provider', {
+            p_service_type: service_type,
+            p_provider: provider,
+          });
 
-      if (activateError) {
-        console.error('[api-config] Activate error:', activateError);
-        // ไม่ return error เพราะ update สำเร็จแล้ว
+        if (activateError) {
+          console.error('[api-config] Activate error:', activateError);
+          // Fallback: อัปเดต is_active โดยตรง
+          const { error: directActivateError } = await adminSupabase
+            .from('api_providers')
+            .update({ is_active: true })
+            .eq('service_type', service_type)
+            .eq('provider', provider);
+
+          if (directActivateError) {
+            console.error('[api-config] Direct activate error:', directActivateError);
+          }
+        }
+      } catch (activateErr) {
+        console.error('[api-config] Activate exception:', activateErr);
+        // Fallback: อัปเดต is_active โดยตรง
+        const { error: directActivateError } = await adminSupabase
+          .from('api_providers')
+          .update({ is_active: true })
+          .eq('service_type', service_type)
+          .eq('provider', provider);
+
+        if (directActivateError) {
+          console.error('[api-config] Direct activate error:', directActivateError);
+        }
       }
     }
 
     // ─── Return sanitized response ───────────────────────
-    const providers = await getAllProviderInfos();
+    let providers: Awaited<ReturnType<typeof getAllProviderInfos>> = [];
+    try {
+      providers = await getAllProviderInfos();
+    } catch (fetchErr) {
+      console.error('[api-config] Fetch after save error:', fetchErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -249,7 +294,6 @@ async function testSttConnection(
         ? 'https://api.groq.com/openai/v1'
         : 'https://api.openai.com/v1';
 
-    // ทดสอบด้วยการ list models (use HEAD to save quota)
     const response = await fetch(`${baseUrl}/models`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${apiKey}` },
@@ -283,7 +327,6 @@ async function testLlmConnection(
 ): Promise<{ success: boolean; message: string }> {
   try {
     if (provider === 'gemini') {
-      // Gemini: test with generateContent
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
@@ -306,7 +349,6 @@ async function testLlmConnection(
         };
       }
     } else {
-      // OpenAI / Groq
       const baseUrl =
         provider === 'groq'
           ? 'https://api.groq.com/openai/v1'

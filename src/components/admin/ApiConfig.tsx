@@ -54,6 +54,8 @@ export default function ApiConfig() {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [activeConfig, setActiveConfig] = useState<ActiveConfig>({ stt: null, llm: null });
   const [loading, setLoading] = useState(true);
+  const [migrationRequired, setMigrationRequired] = useState(false);
+  const [migrationMessage, setMigrationMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
 
@@ -79,6 +81,8 @@ export default function ApiConfig() {
       const res = await fetch(api('/api/admin/api-config'));
       if (res.ok) {
         const data = await res.json();
+        setMigrationRequired(data.migrationRequired || false);
+        setMigrationMessage(data.message || '');
         setProviders(data.providers || []);
         setActiveConfig(data.activeConfig || { stt: null, llm: null });
 
@@ -238,6 +242,27 @@ export default function ApiConfig() {
 
   return (
     <div className="space-y-8">
+
+      {/* ⚠️ Migration Warning Banner */}
+      {migrationRequired && (
+        <section className="rounded-xl border border-warning/30 bg-warning/5 p-5">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl shrink-0">⚠️</span>
+            <div>
+              <h3 className="font-semibold text-warning mb-1">ยังไม่ได้รัน Migration</h3>
+              <p className="text-sm text-text-secondary mb-3">{migrationMessage}</p>
+              <div className="bg-white/50 rounded-lg p-3 text-xs font-mono text-text-secondary border border-border/50">
+                <p className="font-medium mb-1">📋 วิธีแก้ไข:</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>เปิด <strong>Supabase Dashboard</strong> → <strong>SQL Editor</strong></li>
+                  <li>เปิดไฟล์ <code className="bg-surface px-1 rounded">supabase/005_api_config.sql</code></li>
+                  <li>ก็อปปี้ SQL ทั้งหมดไปวางแล้วกัด <strong>Run</strong></li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
       {/* ==================================================== */}
       {/* SECTION 1: STT Config                                */}
       {/* ==================================================== */}

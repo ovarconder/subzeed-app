@@ -50,17 +50,21 @@ function AdminContent() {
   const [stats, setStats] = useState({ totalUsers: 0, activeToday: 0, totalRevenue: 0 });
   const [loading, setLoading] = useState(true);
 
-  // ─── 1. Admin Guard — ตรวจสอบสิทธิ์ ป้องกัน loop ─────
+  // ─── 1. Admin Guard — เช็คครั้งเดียว ป้องกัน loop ─────
+  const [adminChecked, setAdminChecked] = useState(false);
   useEffect(() => {
-    if (isLoading) return; // รอให้ auth เสร็จก่อนเสมอ
+    if (isLoading || adminChecked) return;
 
     const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
 
     if (!isUserAdmin) {
       addToast('คุณไม่มีสิทธิ์เข้าถึงหน้านี้', 'error');
       router.push('/dashboard');
+      return;
     }
-  }, [profile, user, isLoading, router]);
+
+    setAdminChecked(true);
+  }, [profile, user, isLoading, adminChecked, router]);
 
   // ฟังก์ชันดึงข้อมูลดั้งเดิมของระบบ
   const fetchData = async () => {
@@ -100,13 +104,9 @@ function AdminContent() {
 
   // ─── 2. โหลดข้อมูลเมื่อสิทธิ์ผ่านและหน้าเว็บพร้อมทำงาน ──────────────────
   useEffect(() => {
-    if (isLoading) return;
-
-    const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
-    if (!isUserAdmin) return;
-
+    if (!adminChecked || isLoading) return;
     fetchData();
-  }, [profile, user, isLoading, activeTab]);
+  }, [adminChecked, activeTab]);
 
   const handleUpdateTier = async (userId: string, tier: string) => {
     const { error } = await supabase.from('profiles').update({ tier }).eq('id', userId);
@@ -135,9 +135,8 @@ function AdminContent() {
     }
   };
 
-  // บล็อกสกรีนหน้าจอไว้ในเสี้ยววินาทีแรกที่กำลังโหลดสิทธิ์ ป้องกันข้อมูลหลังบ้านหลุดแสดงผลก่อนได้รับอนุญาต
-  const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
-  if (isLoading || !user || !isUserAdmin) {
+  // ถ้ายังไม่ได้เช็ค admin หรือกำลังโหลด ให้แสดง spinner
+  if (isLoading || !adminChecked) {
     return (
       <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-background">
        

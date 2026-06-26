@@ -17,28 +17,34 @@ export default function DashboardPage() {
   const { profile, user, isLoading } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [adminChecked, setAdminChecked] = useState(false);
   const supabase = createClient();
 
-  // ─── Admin Guard + Redirect ─────────────────────────
+  // ─── Admin Guard + Redirect (เช็คครั้งเดียว) ──────────
   useEffect(() => {
-    if (isLoading) return; // รอให้ auth/profile โหลดเสร็จก่อนเสมอ
+    if (isLoading || adminChecked) return;
 
     const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
 
     if (isUserAdmin) {
       router.push('/admin?tab=settings');
-      return; // จบการทำงาน ห้ามทำอะไรต่อ
+      return;
     }
-  }, [profile, user, isLoading, router]);
+
+    setAdminChecked(true);
+  }, [profile, user, isLoading, adminChecked, router]);
 
   // ─── โหลดโปรเจกต์ (สำหรับผู้ใช้ทั่วไปเท่านั้น) ────────
   useEffect(() => {
-    if (isLoading) return;
 
-    const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
-    if (isUserAdmin || !profile) {
+    if (!adminChecked || isLoading) return;
+
+
+
+    if (!profile) {
       setLoading(false);
-      return; // แอดมินไม่ต้องโหลดโปรเจกต์
+
+      return;
     }
 
     supabase
@@ -50,11 +56,13 @@ export default function DashboardPage() {
         if (result.data) setProjects(result.data);
         setLoading(false);
       });
-  }, [profile, user, isLoading]);
+
+  }, [profile, adminChecked, isLoading]);
 
   // ─── ซ่อนหน้า Dashboard กรณียังโหลดสิทธิ์ หรือเป็นแอดมินที่กำลังถูก redirect ──
   const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
-  if (isLoading || isUserAdmin) {
+
+  if (isLoading || !adminChecked) {
     return (
       <div className="flex h-screen w-screen flex-col items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>

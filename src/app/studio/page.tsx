@@ -71,6 +71,13 @@ export default function StudioPage() {
 
   // ---- Enhanced Transcription (ใช้ audio-extractor + transcribe-and-save) ----
   const handleTranscribe = async () => {
+    console.log('[Studio] handleTranscribe called', {
+      hasVideoFile: !!store.videoFile,
+      hasUser: !!user,
+      videoDuration,
+      quotaLeft,
+    });
+
     if (!store.videoFile) {
       addToast('กรุณาเลือกวิดีโอก่อน', 'warning');
       return;
@@ -91,11 +98,13 @@ export default function StudioPage() {
 
     try {
       // 1. Extract audio ด้วย library ใหม่
+      console.log('[Studio] Starting audio extraction...');
       const result = await extractAudio(
         store.videoFile,
         { targetSampleRate: 16000, normalizeAudio: true },
         (pct) => store.setProcessingProgress(pct)
       );
+      console.log('[Studio] Audio extraction done', { sizeBytes: result.sizeBytes, durationSeconds: result.durationSeconds });
 
       // 2. ส่ง transcribe-and-save (all-in-one)
       const formData = new FormData();
@@ -107,12 +116,14 @@ export default function StudioPage() {
         brandTerms.split(',').map(s => s.trim()).filter(Boolean)
       ));
 
+      console.log('[Studio] Sending to /api/transcribe-and-save...');
       const response = await fetch('/api/transcribe-and-save', {
         method: 'POST',
         body: formData,
       });
 
       const data = await response.json();
+      console.log('[Studio] Response', { ok: response.ok, status: response.status, data });
 
       if (!response.ok) {
         if (response.status === 402) {

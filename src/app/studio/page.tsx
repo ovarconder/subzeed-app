@@ -503,7 +503,7 @@ export default function StudioPage() {
                   <div>
                     <p className="mb-3">กดปุ่มด้านล่างเพื่อถอดความอัตโนมัติ</p>
                     <Button size="sm" onClick={handleTranscribe} loading={store.isProcessing}>
-                      🎤 ถอดเสียงเป็น Subtitle
+                      🎤 ถอดเสียงเป็นซับไตเติล
                     </Button>
                   </div>
                 ) : (

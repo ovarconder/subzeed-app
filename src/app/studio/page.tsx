@@ -16,6 +16,27 @@ import type { SubtitleEntry } from '@/lib/types';
 // Helper: generate unique ID
 const uid = () => Math.random().toString(36).slice(2, 9);
 
+/**
+ * แปลง SubtitleEntry array → WebVTT string
+ */
+function generateVtt(subtitles: SubtitleEntry[]): string {
+  const formatTime = (seconds: number): string => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    const cs = Math.round((s % 1) * 1000);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(Math.floor(s)).padStart(2, '0')}.${String(cs).padStart(3, '0')}`;
+  };
+
+  let vtt = 'WEBVTT\n\n';
+  subtitles.forEach((sub, i) => {
+    vtt += `${i + 1}\n`;
+    vtt += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
+    vtt += `${sub.text}\n\n`;
+  });
+  return vtt;
+}
+
 export default function StudioPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -33,6 +54,9 @@ export default function StudioPage() {
   const [enableAiSmart, setEnableAiSmart] = useState(false); // AI แปลภาษา
   const [aiSmartLanguage, setAiSmartLanguage] = useState('en'); // ภาษาเป้าหมาย
   const [showWatermarkPreview, setShowWatermarkPreview] = useState(false);
+  // WebVTT blob URL สำหรับ subtitle track
+  const [vttUrl, setVttUrl] = useState<string | null>(null);
+  const trackRef = useRef<HTMLTrackElement | null>(null);
 
   // Check quota
   const tierConfig = profile ? TIER_CONFIGS[profile.tier] : TIER_CONFIGS.free;
@@ -168,6 +192,12 @@ export default function StudioPage() {
         updated_at: new Date().toISOString(),
       });
 
+      // สร้าง WebVTT blob
+      const vttContent = generateVtt(newSubtitles);
+      if (vttUrl) URL.revokeObjectURL(vttUrl);
+      const blob = new Blob([vttContent], { type: 'text/vtt' });
+      setVttUrl(URL.createObjectURL(blob));
+
       const vocabMsg = data.aiVocabApplied ? ' + AI Vocabulary' : '';
       const smartMsg = data.aiSmartApplied ? ` + AI แปล(${data.aiSmartLanguage || 'en'})` : '';
       addToast(`ถอดความสำเร็จ! ${newSubtitles.length} รายการ${vocabMsg}${smartMsg}`, 'success');
@@ -227,6 +257,13 @@ export default function StudioPage() {
     return () => vid.removeEventListener('timeupdate', handler);
   }, [store.videoUrl]);
 
+  // Cleanup vttUrl เมื่อ component unmount
+  useEffect(() => {
+    return () => {
+      if (vttUrl) URL.revokeObjectURL(vttUrl);
+    };
+  }, []);
+
   // ---- Canvas Watermark Overlay (Free tier) ----
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -236,11 +273,21 @@ export default function StudioPage() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // ใช้ ResizeObserver จับขนาด video จริง ๆ (ไม่ใช่ clientWidth ที่เปลี่ยนทุกครั้ง)
+    const resizeCanvas = () => {
+      const rect = video.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+    };
+    resizeCanvas();
+
     const drawFrame = () => {
       if (video.paused || video.ended) return;
 
-      canvas.width = video.clientWidth;
-      canvas.height = video.clientHeight;
+      // ★★★ สำคัญ: clear canvas ก่อนวาดทุกครั้ง ★★★
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       if (isFree) {
         ctx.save();
@@ -254,7 +301,18 @@ export default function StudioPage() {
     };
 
     video.addEventListener('play', drawFrame);
-    return () => video.removeEventListener('play', drawFrame);
+
+    // ดู resize ด้วย ResizeObserver แทน clientWidth ที่ผันผวน
+    const observer = new ResizeObserver(() => {
+      resizeCanvas();
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // clear เมื่อขนาดเปลี่ยน
+    });
+    observer.observe(video);
+
+    return () => {
+      video.removeEventListener('play', drawFrame);
+      observer.disconnect();
+    };
   }, [store.videoUrl, isFree]);
 
   return (
@@ -378,32 +436,19 @@ export default function StudioPage() {
                   src={store.videoUrl}
                   controls
                   className="max-w-full max-h-full"
-                />
-                {/* Subtitle + Watermark Container — absolute ปักกับ parent ไม่ดัน video */}
-                <div className="absolute inset-0 pointer-events-none">
-                  {/* Canvas for Watermark overlay (Free tier) */}
-                  <canvas
-                    ref={canvasRef}
-                    className="absolute inset-0"
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                  {/* Subtitle Overlay — fixed bottom */}
-                  {currentSub && (
-                    <div
-                      className="absolute left-0 right-0 bottom-[10%] flex justify-center"
-                      style={{
-                        animation: store.currentTime >= currentSub.start ? 'subtitleFadeIn 0.2s ease-out' : 'none',
-                      }}
-                    >
-                      <span
-                        className="inline-block bg-black/60 px-4 py-2 rounded-lg text-white text-xl text-center max-w-[80%]"
-                        style={{ fontFamily: tierConfig.fonts[0] || 'Arial' }}
-                      >
-                        {currentSub.text}
-                      </span>
-                    </div>
+                >
+                  {/* WebVTT Subtitle Track — native browser rendering ไม่ดัน layout */}
+                  {vttUrl && (
+                    <track
+                      ref={trackRef}
+                      kind="subtitles"
+                      src={vttUrl}
+                      srcLang="th"
+                      label="ไทย"
+                      default
+                    />
                   )}
-                </div>
+                </video>
               </div>
             ) : (
               <div className="text-center text-white/60">

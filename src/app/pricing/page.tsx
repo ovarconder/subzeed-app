@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { TIER_CONFIGS, type SubscriptionTier } from '@/lib/types';
 import { useAuth } from '@/components/auth/auth-provider';
 import { useToast } from '@/components/ui/toaster';
+import { api } from '@/lib/api';
 
 const tiers: SubscriptionTier[] = ['free', 'basic', 'premium', 'business_starter', 'business_pro'];
 
@@ -69,7 +70,6 @@ function PricingContent() {
     setLoadingTier(tier);
 
     try {
-      const res = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tier }),

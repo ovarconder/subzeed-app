@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Button } from '@/components/ui/button';
 import { TierBadge } from '@/components/ui/badge';
+import { api } from '@/lib/api';
 import type { Profile, BillingHistory, QuotaActivityLog } from '@/lib/types';
 
 // ============================================================
@@ -37,9 +38,6 @@ export default function Reports() {
     setLoading(true);
     try {
       // ใช้ API route ที่มี auth guard อยู่แล้ว
-      const [usersRes, billingRes, logsRes] = await Promise.all([
-        fetch('/api/admin/users'),
-        fetch('/api/admin/billing'),
         fetch('/api/admin/quota-logs'),
       ]);
 

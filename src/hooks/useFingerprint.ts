@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { api } from '@/lib/api';
 
 /**
  * useFingerprint
@@ -88,7 +89,7 @@ export function useFingerprint(): UseFingerprintResult {
         return;
       }
 
-      const res = await fetch('/api/fingerprint/check', {
+      const res = await fetch(api('/api/fingerprint/check'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fingerprint, email }),

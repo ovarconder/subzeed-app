@@ -10,6 +10,7 @@ import { useSubtitleStore } from '@/lib/store/subtitle-store';
 import { useToast } from '@/components/ui/toaster';
 import { TIER_CONFIGS } from '@/lib/types';
 import { extractAudio } from '@/lib/audio-extractor';
+import { api } from '@/lib/api';
 import type { SubtitleEntry } from '@/lib/types';
 
 // Helper: generate unique ID
@@ -117,7 +118,7 @@ export default function StudioPage() {
       ));
 
       console.log('[Studio] Sending to /api/transcribe-and-save...');
-      const response = await fetch('/api/transcribe-and-save', {
+      const response = await fetch(api('/api/transcribe-and-save'), {
         method: 'POST',
         body: formData,
       });

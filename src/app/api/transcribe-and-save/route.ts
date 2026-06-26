@@ -82,44 +82,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ─── 3. Whisper API ───────────────────────────────
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
-    }
-
+    // ─── 3. Whisper API (Dynamic Provider) ──────────────
     const audioBuffer = await audioFile.arrayBuffer();
-    const file = new File([audioBuffer], 'audio.wav', { type: 'audio/wav' });
 
-    const whisperForm = new FormData();
-    whisperForm.append('file', file);
-    whisperForm.append('model', 'whisper-1');
-    whisperForm.append('response_format', 'verbose_json');
-    whisperForm.append('language', 'th');
-    whisperForm.append('temperature', '0.0');
-
-    const whisperResponse = await fetch(
-      'https://api.openai.com/v1/audio/transcriptions',
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: whisperForm,
+    let transcriptionResult;
+    try {
+      // ใช้ Dynamic API Provider จาก DB config
+      const { transcribeAudio } = await import('@/lib/api-providers');
+      transcriptionResult = await transcribeAudio(audioBuffer, 'th');
+    } catch (transcribeErr) {
+      console.error('[transcribe-and-save] Transcribe error:', transcribeErr);
+      const msg = transcribeErr instanceof Error ? transcribeErr.message : '';
+      if (msg.includes('No active STT provider')) {
+        return NextResponse.json(
+          { error: 'ยังไม่ได้ตั้งค่า STT Provider — ไปที่หน้า Admin > ตั้งค่า API เพื่อตั้งค่า API Key ก่อนใช้ถอดความ' },
+          { status: 503 }
+        );
       }
-    );
-
-    if (!whisperResponse.ok) {
-      const errText = await whisperResponse.text();
-      console.error('[transcribe-and-save] Whisper error:', errText);
       return NextResponse.json(
         { error: 'Transcription failed — ลองใหม่อีกครั้ง' },
         { status: 502 }
       );
     }
 
-    const data = await whisperResponse.json();
-    const rawSegments = data.segments || [];
-    const fullText = data.text || '';
-    const actualDuration = data.duration || estimatedDurationSeconds;
+    const rawSegments = transcriptionResult.segments || [];
+    const fullText = transcriptionResult.text || '';
+    const actualDuration = transcriptionResult.duration || estimatedDurationSeconds;
     const usedMinutes = Math.ceil(actualDuration / 60);
 
     // ─── 4. แปลงเป็น SubtitleEntry ─────────────────────
@@ -136,40 +124,43 @@ export async function POST(request: NextRequest) {
     // ─── 5. AI Vocabulary (Gemini) — ถ้า Premium ขึ้นไป ─
     if (enableAiVocab && profile.tier !== 'free' && profile.tier !== 'basic') {
       try {
-        const brandTerms: string[] = brandTermsRaw
+        const brandTermsList: string[] = brandTermsRaw
           ? JSON.parse(brandTermsRaw)
           : [];
 
-        const geminiResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/gemini-vocab`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              subtitles: subtitles.map((s) => ({ id: s.id, text: s.text })),
-              brandTerms,
-            }),
-          }
+        // ใช้ Dynamic LLM Provider
+        const { processAISmart } = await import('@/lib/api-providers');
+        const systemPrompt = `คุณคือผู้เชี่ยวชาญด้านการพิสูจน์อักษรภาษาไทย
+- ตรวจสอบและแก้ไขคำผิดในซับไตเติล
+- รักษาคำแบรนด์/ชื่อเฉพาะ: ${brandTermsList.join(', ')}
+- ตอบกลับเป็น JSON array: [{"id": "...", "original": "...", "corrected": "..."}]`;
+
+        const result = await processAISmart(
+          JSON.stringify(subtitles.map((s) => ({ id: s.id, text: s.text }))),
+          systemPrompt,
+          { temperature: 0.3, maxTokens: 4096 }
         );
 
-        if (geminiResponse.ok) {
-          const { corrections } = await geminiResponse.json();
-          if (corrections && corrections.length > 0) {
-            // อัปเดตข้อความที่แก้ไข
-            subtitles = subtitles.map((sub) => {
-              const correction = corrections.find(
-                (c: any) => c.original === sub.text
-              );
-              if (correction && correction.corrected && correction.corrected !== sub.text) {
-                return { ...sub, text: correction.corrected };
-              }
-              return sub;
-            });
+        if (result.content) {
+          try {
+            const corrections = JSON.parse(result.content.replace(/```json|```/g, '').trim());
+            if (Array.isArray(corrections) && corrections.length > 0) {
+              subtitles = subtitles.map((sub) => {
+                const correction = corrections.find(
+                  (c: any) => c.original === sub.text
+                );
+                if (correction && correction.corrected && correction.corrected !== sub.text) {
+                  return { ...sub, text: correction.corrected };
+                }
+                return sub;
+              });
+            }
+          } catch {
+            console.warn('[transcribe-and-save] Failed to parse Gemini vocab response');
           }
         }
       } catch (geminiErr) {
         console.warn('[transcribe-and-save] Gemini vocab error (non-fatal):', geminiErr);
-        // ไม่ล้มเหลวทั้งกระบวนการ แค่ข้ามไป
       }
     }
 
@@ -177,48 +168,40 @@ export async function POST(request: NextRequest) {
     let aiSmartApplied = false;
     if (enableAiSmart && profile.tier !== 'free' && profile.tier !== 'basic') {
       try {
-        // ใช้ processAISmart จาก api-providers ถ้ามี หรือเรียก Gemini โดยตรง
         const langName = getLanguageName(aiSmartLanguage);
-        const translationPrompt = `คุณคือผู้เชี่ยวชาญด้านการแปลภาษา กรุณาแปลข้อความซับไตเติลภาษาไทยด้านล่างเป็นภาษา${langName} โดยคงความหมายเดิม รักษาคำเฉพาะ/ชื่อเฉพาะไว้ (เช่น SubZeed, ชื่อคน, ชื่อแบรนด์) และปรับให้เป็นภาษาธรรมชาติที่เข้าใจง่าย
+        const { processAISmart } = await import('@/lib/api-providers');
+        const systemPrompt = `คุณคือผู้เชี่ยวชาญด้านการแปลภาษา
+แปลข้อความซับไตเติลจากภาษาไทยเป็นภาษา${langName}
+คงความหมายเดิมและรักษาชื่อเฉพาะ/ชื่อแบรนด์ไว้
+ตอบกลับเป็น JSON array: [{"id": "...", "original": "...", "translated": "..."}]`;
 
-ให้ตอบกลับเป็น JSON array ที่มีฟิลด์ "id" (id เดิม), "original", "translated"
-
-ข้อความซับไตเติล:
-${JSON.stringify(subtitles.map((s) => ({ id: s.id, text: s.text })))}`;
-
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/gemini-vocab`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              subtitles: subtitles.map((s) => ({ id: s.id, text: s.text })),
-              brandTerms: [],
-              translationMode: true,
-              targetLanguage: aiSmartLanguage,
-              targetLanguageName: langName,
-            }),
-          }
+        const result = await processAISmart(
+          JSON.stringify(subtitles.map((s) => ({ id: s.id, text: s.text }))),
+          systemPrompt,
+          { temperature: 0.3, maxTokens: 4096 }
         );
 
-        if (response.ok) {
-          const { corrections } = await response.json();
-          if (corrections && corrections.length > 0) {
-            subtitles = subtitles.map((sub) => {
-              const correction = corrections.find(
-                (c: any) => c.id === sub.id || c.original === sub.text
-              );
-              if (correction && correction.translated && correction.translated !== sub.text) {
-                return { ...sub, text: correction.translated };
-              }
-              return sub;
-            });
-            aiSmartApplied = true;
+        if (result.content) {
+          try {
+            const translations = JSON.parse(result.content.replace(/```json|```/g, '').trim());
+            if (Array.isArray(translations) && translations.length > 0) {
+              subtitles = subtitles.map((sub) => {
+                const t = translations.find(
+                  (c: any) => c.id === sub.id || c.original === sub.text
+                );
+                if (t && t.translated && t.translated !== sub.text) {
+                  return { ...sub, text: t.translated };
+                }
+                return sub;
+              });
+              aiSmartApplied = true;
+            }
+          } catch {
+            console.warn('[transcribe-and-save] Failed to parse translation response');
           }
         }
       } catch (aiErr) {
         console.warn('[transcribe-and-save] AI Smart translation error (non-fatal):', aiErr);
-        // ไม่ล้มเหลวทั้งกระบวนการ แค่ข้ามไป
       }
     }
 

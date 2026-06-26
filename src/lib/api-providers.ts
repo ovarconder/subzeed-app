@@ -29,10 +29,15 @@ async function getActiveProvider(serviceType: 'stt' | 'llm'): Promise<ApiProvide
     .select('*')
     .eq('service_type', serviceType)
     .eq('is_active', true)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
-    console.error(`[api-providers] No active ${serviceType} provider found:`, error?.message);
+  if (error) {
+    console.error(`[api-providers] Error fetching active ${serviceType} provider:`, error?.message);
+    return null;
+  }
+
+  if (!data) {
+    console.error(`[api-providers] No active ${serviceType} provider found`);
     return null;
   }
 
@@ -64,9 +69,17 @@ async function getActiveProviderWithKey(serviceType: 'stt' | 'llm'): Promise<{
 
 /**
  * ถอดรหัส API Key จาก encrypted string
- * เรียกใช้ฟังก์ชัน decrypt_api_key ใน Database
+ * รองรับ:
+ * - pgp_sym_encrypt (ถ้า RPC decrypt_api_key มีอยู่)
+ * - Plain text (fallback สำหรับ dev mode ที่ยังไม่ได้รัน migration encrypt)
  */
 async function decryptApiKey(encryptedKey: string): Promise<string | null> {
+  // ถ้า key ดูเหมือน plain text (ไม่ใช่ base64 หรือ format encrypted)
+  // ให้ลองใช้ตรง ๆ ก่อน (dev fallback)
+  if (encryptedKey && !encryptedKey.startsWith('\\x') && !encryptedKey.includes('=') && encryptedKey.length < 100) {
+    return encryptedKey;
+  }
+
   try {
     const supabase = createServiceSupabase();
     const { data, error } = await supabase.rpc('decrypt_api_key', {
@@ -75,29 +88,16 @@ async function decryptApiKey(encryptedKey: string): Promise<string | null> {
 
     if (error || !data) {
       console.error('[api-providers] Decrypt error:', error?.message);
-      // Fallback: ใช้ environment variable ถ้ามีการตั้งค่าโดยตรง
-      return decryptApiKeyFallback(encryptedKey);
+      // Fallback: ถ้า RPC ไม่มี (ยังไม่ได้รัน migration) ให้ส่งคืน key ตรง ๆ
+      return encryptedKey;
     }
 
     return data as string;
   } catch (err) {
     console.error('[api-providers] Decrypt exception:', err);
-    return decryptApiKeyFallback(encryptedKey);
+    // Fallback: return as plain text
+    return encryptedKey;
   }
-}
-
-/**
- * Fallback decryption: ถ้าการเรียก RPC ไม่สำเร็จ
- * ใช้ในกรณีที่ยังไม่ได้เรียกใช้งาน migration หรือ environment
- */
-async function decryptApiKeyFallback(_encryptedKey: string): Promise<string | null> {
-  // ถ้ามีการตั้งค่า API Keys ใน environment variables ตรง ๆ
-  // ให้ใช้ค่านั้นแทน (backward compatibility)
-  const envKey = process.env.OPENAI_API_KEY;
-  if (envKey) return envKey;
-
-  console.warn('[api-providers] No fallback API key found in env');
-  return null;
 }
 
 // ============================================================

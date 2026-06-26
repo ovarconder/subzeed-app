@@ -116,7 +116,13 @@ export async function PUT(request: NextRequest) {
     // ─── อัปเดต Config ──────────────────────────────────
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
+      // is_active: ถ้าส่งมาใน request ให้ใช้ค่านั้น ถ้าไม่ส่งให้คงค่าเดิม
     };
+
+    // ถ้าส่ง is_active มา ให้ set ใน updateData ด้วย
+    if (is_active !== undefined) {
+      updateData.is_active = is_active;
+    }
 
     if (model !== undefined) {
       updateData.model = model;

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import siteConfig from "@/lib/site-config";
 import { Providers } from "./providers";
+import { SiteConfigProvider } from "@/components/layout/site-config-provider";
 
 // ─── Static metadata (ใช้ fallback จาก site-config.ts) ─
 export const metadata: Metadata = {
@@ -23,8 +24,9 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   // ─── ดึง favicon จาก DB โดยตรง (Server Component) ────
-  let favicon = siteConfig.brand.favicon; // fallback
+  let favicon = siteConfig.brand.favicon;
   let brandName = siteConfig.brand.name;
+  let brandSlogan = siteConfig.brand.slogan;
 
   try {
     const { createServiceSupabase } = await import('@/lib/supabase/server');
@@ -37,6 +39,7 @@ export default async function RootLayout({
 
     if (data?.config?.brand?.favicon) favicon = data.config.brand.favicon;
     if (data?.config?.brand?.name) brandName = data.config.brand.name;
+    if (data?.config?.brand?.slogan) brandSlogan = data.config.brand.slogan;
   } catch (err) {
     console.warn('[Layout] Failed to read site config from DB:', err);
   }
@@ -44,14 +47,15 @@ export default async function RootLayout({
   return (
     <html lang={siteConfig.misc.locale} className="h-full antialiased">
       <head>
-        {/* Dynamic favicon from admin settings */}
         <link rel="icon" href={favicon} sizes="any" />
         <link rel="apple-touch-icon" href={favicon} />
         <meta property="og:title" content={brandName} />
-        <meta property="og:description" content={siteConfig.brand.slogan} />
+        <meta property="og:description" content={brandSlogan} />
       </head>
       <body className="min-h-full flex flex-col">
-        <Providers>{children}</Providers>
+        <SiteConfigProvider>
+          <Providers>{children}</Providers>
+        </SiteConfigProvider>
       </body>
     </html>
   );

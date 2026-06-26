@@ -11,9 +11,11 @@ export interface SiteConfig {
     name: string;
     tagline: string;
     slogan: string;
-    logo: string;          // URL หรือ path
-    logoMobile: string;    // สำหรับมือถือ (เล็กกว่า)
+    logo: string;                // URL หรือ path
+    logoMobile: string;          // สำหรับมือถือ (เล็กกว่า)
     favicon: string;
+    logoText?: string;           // ข้อความที่แสดงข้างโลโก้ (ถ้าว่าง = ไม่แสดง)
+    showLogoText?: boolean;      // true = แสดงข้อความข้างโลโก้
   };
 
   // ─── Theme / Colors ─────────────────────────────────
@@ -78,6 +80,8 @@ const siteConfig: SiteConfig = {
     logo: '/logo.svg',
     logoMobile: '/logo-mobile.svg',
     favicon: '/favicon.ico',
+    logoText: 'SubZeed',
+    showLogoText: true,
   },
 
   theme: {

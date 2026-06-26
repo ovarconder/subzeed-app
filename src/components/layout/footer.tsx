@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import siteConfig from '@/lib/site-config';
+import { useSiteConfig } from '@/components/layout/site-config-provider';
 
 const socialIcons: Record<string, string> = {
   facebook: '📘',
@@ -13,6 +13,7 @@ const socialIcons: Record<string, string> = {
 };
 
 export function Footer() {
+  const { config: siteConfig } = useSiteConfig();
   const { footer, brand } = siteConfig;
 
   return (
@@ -88,3 +89,4 @@ export function Footer() {
     </footer>
   );
 }
+

@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useAuth } from '@/components/auth/auth-provider';
 import { useRouter } from 'next/navigation';
 import { TIER_CONFIGS } from '@/lib/types';
-import siteConfig from '@/lib/site-config';
+import { useSiteConfig } from '@/components/layout/site-config-provider';
 
 export function Navbar() {
   const { user, profile, signOut } = useAuth();
+  const { config: siteConfig } = useSiteConfig();
   const router = useRouter();
 
   const tierLabel = profile?.tier ? TIER_CONFIGS[profile.tier]?.name : 'Free';
@@ -27,7 +28,6 @@ export function Navbar() {
             alt={siteConfig.brand.name}
             className="hidden sm:block h-8 w-auto"
             onError={(e) => {
-              // fallback ถ้าไม่มีไฟล์ logo
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
@@ -40,9 +40,12 @@ export function Navbar() {
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
-          <span className="text-xl font-bold tracking-tight" style={{ color: 'var(--sz-primary)' }}>
-            {siteConfig.brand.name}
-          </span>
+          {/* Logo text (ถ้าเปิดใช้งาน) */}
+          {siteConfig.brand.showLogoText !== false && siteConfig.brand.logoText && (
+            <span className="text-xl font-bold tracking-tight" style={{ color: 'var(--sz-primary)' }}>
+              {siteConfig.brand.logoText}
+            </span>
+          )}
           <span className="hidden text-xs sm:inline" style={{ color: 'var(--sz-muted)' }}>
             {siteConfig.brand.tagline}
           </span>
@@ -133,3 +136,4 @@ export function Navbar() {
     </nav>
   );
 }
+

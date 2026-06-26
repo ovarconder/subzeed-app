@@ -227,6 +227,23 @@ export default function SiteSettings({ onRefresh }: Props) {
               folder="favicons"
               accept="image/x-icon,image/png,image/svg+xml"
             />
+            <Input
+              label="ข้อความข้างโลโก้ (logoText)"
+              value={config.brand.logoText || ''}
+              onChange={(e) => updateField('brand', 'logoText', e.target.value)}
+            />
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="showLogoText"
+                checked={config.brand.showLogoText !== false}
+                onChange={(e) => updateField('brand', 'showLogoText', e.target.checked)}
+                className="rounded border-border"
+              />
+              <label htmlFor="showLogoText" className="text-sm text-text-secondary">
+                แสดงข้อความข้างโลโก้
+              </label>
+            </div>
           </div>
         )}
 

@@ -30,7 +30,8 @@
 - [ ] อ่าน `docs/lessons-learned-workflow.md` — บทเรียน (ไฟล์นี้)
 - [ ] เรียก `ls` ดูโครงสร้างไฟล์ที่มีอยู่แล้ว
 - [ ] ตรวจสอบว่า `node_modules` และ `.env.local` มีอยู่หรือไม่
-- [ ] ตรวจสอบว่า Supabase schema รันไปยัง belum
+- [ ] ตรวจสอบว่า `nvm` พร้อมใช้ (ถ้าใช้ Terminal VSCode ต้องรัน `nvm use` ก่อน)
+- [ ] ตรวจสอบว่า Supabase schema รันไปถึงไหนแล้ว
 
 ---
 
@@ -70,17 +71,35 @@
 ## 🔧 คำสั่งที่ใช้บ่อย
 
 ```bash
+# ใช้ nvm ก่อนทุกครั้ง (VSCode ต้องรันก่อน)
+nvm use
+
 # Dev
 npm run dev
 
-# Build
+# Build (ถ้า nvm ยังไม่โหลด ให้รัน nvm use ก่อน)
 npm run build
 
 # Install deps
-npm install @fingerprintjs/fingerprintjs
+npm install
 
 # Deploy to Vercel
-vercel --prod
+npx vercel --prod
+```
+
+---
+
+## ⚡ ข้อควรรู้สำหรับ VSCode Terminal
+
+VSCode Terminal เวอร์ชั่นล่าสุด **ไม่สามารถใช้ npm โดยตรง** ต้องรัน `nvm use` ก่อนทุกครั้งที่เปิด Terminal ใหม่:
+
+```bash
+# ตอนเปิด Terminal ครั้งแรก
+nvm use
+# → Now using node v20.x.x
+
+# แล้วค่อยใช้ npm
+npm run dev
 ```
 
 ---

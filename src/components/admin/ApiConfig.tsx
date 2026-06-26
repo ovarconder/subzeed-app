@@ -61,10 +61,12 @@ export default function ApiConfig() {
   const [sttProvider, setSttProvider] = useState<SttProvider>('openai');
   const [sttModel, setSttModel] = useState('whisper-1');
   const [sttApiKey, setSttApiKey] = useState('');
+  const [showSttKey, setShowSttKey] = useState(false);
 
   const [llmProvider, setLlmProvider] = useState<LlmProvider>('openai');
   const [llmModel, setLlmModel] = useState('gpt-4o-mini');
   const [llmApiKey, setLlmApiKey] = useState('');
+  const [showLlmKey, setShowLlmKey] = useState(false);
 
   // ─── Computed model options ─────────────────────────
   const sttModels = STT_PROVIDER_OPTIONS[sttProvider]?.models || [];
@@ -310,19 +312,39 @@ export default function ApiConfig() {
                   (เว้นว่างถ้าไม่ต้องการเปลี่ยน)
                 </span>
               </div>
-              <input
-                type="password"
-                placeholder={
-                  sttHasKey
-                    ? '•••••••••••••••••••• (กรอกเพื่อเปลี่ยน Key)'
-                    : 'กรอก API Key'
-                }
-                value={sttApiKey}
-                onChange={(e) => setSttApiKey(e.target.value)}
-                autoComplete="off"
-                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm 
-                  placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary-light"
-              />
+              <div className="relative">
+                <input
+                  type={showSttKey ? 'text' : 'password'}
+                  placeholder={
+                    sttHasKey
+                      ? '•••••••••••••••••••• (กรอกเพื่อเปลี่ยน Key)'
+                      : 'กรอก API Key'
+                  }
+                  value={sttApiKey}
+                  onChange={(e) => setSttApiKey(e.target.value)}
+                  autoComplete="off"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 pr-10 text-sm 
+                    placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSttKey(!showSttKey)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text transition-colors"
+                  aria-label={showSttKey ? 'ซ่อน API Key' : 'แสดง API Key'}
+                >
+                  {showSttKey ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M3.53 2.47a.75.75 0 00-1.06 1.06l18 18a.75.75 0 101.06-1.06l-18-18zM22.676 12.553a11.249 11.249 0 01-2.631 4.31l-3.099-3.099a5.25 5.25 0 00-6.92-6.92L7.759 4.13a11.25 11.25 0 0114.917 8.424z" />
+                      <path d="M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+                      <path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 010-1.113zM17.25 12a5.25 5.25 0 11-10.5 0 5.25 5.25 0 0110.5 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -417,19 +439,39 @@ export default function ApiConfig() {
                   (เว้นว่างถ้าไม่ต้องการเปลี่ยน)
                 </span>
               </div>
-              <input
-                type="password"
-                placeholder={
-                  llmHasKey
-                    ? '•••••••••••••••••••• (กรอกเพื่อเปลี่ยน Key)'
-                    : 'กรอก API Key'
-                }
-                value={llmApiKey}
-                onChange={(e) => setLlmApiKey(e.target.value)}
-                autoComplete="off"
-                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm 
-                  placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary-light"
-              />
+              <div className="relative">
+                <input
+                  type={showLlmKey ? 'text' : 'password'}
+                  placeholder={
+                    llmHasKey
+                      ? '•••••••••••••••••••• (กรอกเพื่อเปลี่ยน Key)'
+                      : 'กรอก API Key'
+                  }
+                  value={llmApiKey}
+                  onChange={(e) => setLlmApiKey(e.target.value)}
+                  autoComplete="off"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 pr-10 text-sm 
+                    placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary-light"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowLlmKey(!showLlmKey)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text transition-colors"
+                  aria-label={showLlmKey ? 'ซ่อน API Key' : 'แสดง API Key'}
+                >
+                  {showLlmKey ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M3.53 2.47a.75.75 0 00-1.06 1.06l18 18a.75.75 0 101.06-1.06l-18-18zM22.676 12.553a11.249 11.249 0 01-2.631 4.31l-3.099-3.099a5.25 5.25 0 00-6.92-6.92L7.759 4.13a11.25 11.25 0 0114.917 8.424z" />
+                      <path d="M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+                      <path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 010-1.113zM17.25 12a5.25 5.25 0 11-10.5 0 5.25 5.25 0 0110.5 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

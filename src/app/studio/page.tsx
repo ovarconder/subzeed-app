@@ -37,6 +37,38 @@ function generateVtt(subtitles: SubtitleEntry[]): string {
   return vtt;
 }
 
+/**
+ * inject WebVTT track เข้า video โดยตรงด้วย DOM API
+ * ไม่ใช้ React state/JSX conditional → video ไม่ถูก mount ใหม่
+ */
+function injectVttTrack(video: HTMLVideoElement | null, vttUrl: string) {
+  if (!video) return;
+
+  // ลบ track เก่า
+  const oldTracks = video.querySelectorAll('track');
+  oldTracks.forEach((t) => {
+    if (t.src) URL.revokeObjectURL(t.src);
+    t.remove();
+  });
+
+  // สร้าง track ใหม่
+  const track = document.createElement('track');
+  track.kind = 'subtitles';
+  track.src = vttUrl;
+  track.srcLang = 'th';
+  track.label = 'ไทย';
+  track.default = true;
+  video.appendChild(track);
+
+  // trigger browser ให้ reload track
+  track.addEventListener('load', () => {
+    const textTrack = track.track;
+    if (textTrack) {
+      textTrack.mode = 'showing';
+    }
+  });
+}
+
 export default function StudioPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -47,6 +79,7 @@ export default function StudioPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const vttUrlRef = useRef<string | null>(null);
   const [subtitleText, setSubtitleText] = useState('');
   const [videoDuration, setVideoDuration] = useState(0);
   const [brandTerms, setBrandTerms] = useState('');
@@ -54,9 +87,8 @@ export default function StudioPage() {
   const [enableAiSmart, setEnableAiSmart] = useState(false); // AI แปลภาษา
   const [aiSmartLanguage, setAiSmartLanguage] = useState('en'); // ภาษาเป้าหมาย
   const [showWatermarkPreview, setShowWatermarkPreview] = useState(false);
-  // WebVTT blob URL สำหรับ subtitle track
-  const [vttUrl, setVttUrl] = useState<string | null>(null);
-  const trackRef = useRef<HTMLTrackElement | null>(null);
+  // WebVTT blob URL สำหรับ subtitle track (จัดการผ่าน ref ไม่ให้ React mount/unmount video)
+  const vttUrlRef = useRef<string | null>(null);
 
   // Check quota
   const tierConfig = profile ? TIER_CONFIGS[profile.tier] : TIER_CONFIGS.free;
@@ -192,11 +224,17 @@ export default function StudioPage() {
         updated_at: new Date().toISOString(),
       });
 
-      // สร้าง WebVTT blob
+      // สร้าง WebVTT blob และ inject เข้า video โดยตรง (ไม่ใช้ state = ไม่ re-render)
       const vttContent = generateVtt(newSubtitles);
-      if (vttUrl) URL.revokeObjectURL(vttUrl);
       const blob = new Blob([vttContent], { type: 'text/vtt' });
-      setVttUrl(URL.createObjectURL(blob));
+      const newVttUrl = URL.createObjectURL(blob);
+      
+      // revoke อันเก่า
+      if (vttUrlRef.current) URL.revokeObjectURL(vttUrlRef.current);
+      vttUrlRef.current = newVttUrl;
+
+      // inject track ด้วย DOM API โดยตรง — ไม่ให้ React จับ video
+      injectVttTrack(videoRef.current, newVttUrl);
 
       const vocabMsg = data.aiVocabApplied ? ' + AI Vocabulary' : '';
       const smartMsg = data.aiSmartApplied ? ` + AI แปล(${data.aiSmartLanguage || 'en'})` : '';
@@ -260,7 +298,7 @@ export default function StudioPage() {
   // Cleanup vttUrl เมื่อ component unmount
   useEffect(() => {
     return () => {
-      if (vttUrl) URL.revokeObjectURL(vttUrl);
+      if (vttUrlRef.current) URL.revokeObjectURL(vttUrlRef.current);
     };
   }, []);
 
@@ -436,19 +474,7 @@ export default function StudioPage() {
                   src={store.videoUrl}
                   controls
                   className="max-w-full max-h-full"
-                >
-                  {/* WebVTT Subtitle Track — native browser rendering ไม่ดัน layout */}
-                  {vttUrl && (
-                    <track
-                      ref={trackRef}
-                      kind="subtitles"
-                      src={vttUrl}
-                      srcLang="th"
-                      label="ไทย"
-                      default
-                    />
-                  )}
-                </video>
+                />
               </div>
             ) : (
               <div className="text-center text-white/60">

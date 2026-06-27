@@ -96,20 +96,16 @@ function AdminContent() {
         setFingerprints(data.records || []);
       }
 
-      // Stats — fallback ถ้า RPC ไม่มี
+      // Stats — ใช้ API route แทน RPC (เผื่อ migration 006 ยังไม่รัน)
       try {
-        const { data: sData, error: sError } = await supabase.rpc('get_admin_stats');
-        if (!sError && sData) {
-          setStats(sData);
-        } else {
-          // fallback: นับจาก users ที่เพิ่งโหลด
-          setStats(prev => ({
-            ...prev,
-            totalUsers: users.length || prev.totalUsers,
-          }));
-        }
+        const statsData = await apiGet('/api/admin/stats');
+        setStats({
+          totalUsers: statsData.totalUsers ?? 0,
+          activeToday: statsData.activeToday ?? 0,
+          totalRevenue: statsData.totalRevenue ?? 0,
+        });
       } catch {
-        // ignore stats error
+        console.warn('[admin] Stats API failed, using fallback');
       }
     } catch (err) {
       console.error('Fetch admin data error:', err);

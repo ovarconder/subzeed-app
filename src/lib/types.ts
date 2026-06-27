@@ -124,6 +124,7 @@ export interface Profile {
   phone_number: string | null;
   tier: SubscriptionTier;
   is_super_admin?: boolean;
+  is_quota_abuser?: boolean;
   quota_minutes_total: number;
   quota_minutes_used: number;
   billing_cycle_start: string;

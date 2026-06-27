@@ -65,7 +65,6 @@ export default function UsersTable({ users, onUpdateTier, onUnblock }: Props) {
                     <option value="business_starter">Business Starter</option>
                     <option value="business_pro">Business Pro</option>
                   </select>
-                  {(u as any).is_quota_abuser && (
                     <Button size="sm" variant="outline" onClick={() => onUnblock(u.id)}>
                       ปลดล็อก
                     </Button>

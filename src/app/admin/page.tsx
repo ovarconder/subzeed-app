@@ -52,6 +52,16 @@ function AdminContent() {
   const [stats, setStats] = useState({ totalUsers: 0, activeToday: 0, totalRevenue: 0 });
   const [loading, setLoading] = useState(true);
 
+  // Helper: เรียก API route (ใช้ service role bypass RLS)
+  const apiGet = async (path: string) => {
+    const res = await fetch(path);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `API ${path}: ${res.status}`);
+    }
+    return res.json();
+  };
+
   // ─── 1. Admin Guard — เช็คครั้งเดียว ป้องกัน loop ─────
   const [adminChecked, setAdminChecked] = useState(false);
   useEffect(() => {
@@ -68,35 +78,39 @@ function AdminContent() {
     setAdminChecked(true);
   }, [profile, user, isLoading, adminChecked, router]);
 
-  // ฟังก์ชันดึงข้อมูลดั้งเดิมของระบบ
+  // ฟังก์ชันดึงข้อมูล — ใช้ API route (service role) แทน client-side Supabase (anon key + RLS)
   const fetchData = async () => {
     setLoading(true);
     try {
-      if (activeTab === 'users' || activeTab === 'abusers') {
-        const isAbuser = activeTab === 'abusers';
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('is_blocked', isAbuser)
-          .order('created_at', { ascending: false });
-        if (data) setUsers(data);
+      if (activeTab === 'users') {
+        const data = await apiGet('/api/admin/users');
+        setUsers(data.users || []);
+      } else if (activeTab === 'abusers') {
+        const data = await apiGet('/api/admin/users?abusers=true');
+        setUsers(data.users || []);
       } else if (activeTab === 'billing') {
-        const { data } = await supabase
-          .from('billing_history')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (data) setBillingHistory(data);
+        const data = await apiGet('/api/admin/billing');
+        setBillingHistory(data.history || []);
       } else if (activeTab === 'fingerprints') {
-        const { data } = await supabase
-          .from('user_fingerprints')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (data) setFingerprints(data);
+        const data = await apiGet('/api/admin/fingerprints');
+        setFingerprints(data.records || []);
       }
 
-      // ดึงข้อมูล Stats สรุปภาพรวม
-      const { data: sData } = await supabase.rpc('get_admin_stats');
-      if (sData) setStats(sData);
+      // Stats — fallback ถ้า RPC ไม่มี
+      try {
+        const { data: sData, error: sError } = await supabase.rpc('get_admin_stats');
+        if (!sError && sData) {
+          setStats(sData);
+        } else {
+          // fallback: นับจาก users ที่เพิ่งโหลด
+          setStats(prev => ({
+            ...prev,
+            totalUsers: users.length || prev.totalUsers,
+          }));
+        }
+      } catch {
+        // ignore stats error
+      }
     } catch (err) {
       console.error('Fetch admin data error:', err);
     } finally {
@@ -111,10 +125,17 @@ function AdminContent() {
   }, [adminChecked, activeTab]);
 
   const handleUpdateTier = async (userId: string, tier: string) => {
-    const { error } = await supabase.from('profiles').update({ tier }).eq('id', userId);
-    if (!error) {
+    try {
+      const res = await fetch('/api/admin/users/update-tier', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, tier }),
+      });
+      if (!res.ok) throw new Error('Update failed');
       addToast('อัปเดตแพ็กเกจสำเร็จ', 'success');
       fetchData();
+    } catch {
+      addToast('❌ อัปเดตไม่สำเร็จ', 'error');
     }
   };
 
@@ -130,10 +151,17 @@ function AdminContent() {
   };
 
   const handleUnblock = async (userId: string) => {
-    const { error } = await supabase.from('profiles').update({ is_blocked: false }).eq('id', userId);
-    if (!error) {
+    try {
+      const res = await fetch('/api/admin/users/unblock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      if (!res.ok) throw new Error('Unblock failed');
       addToast('ปลดบล็อกผู้ใช้สำเร็จ', 'success');
       fetchData();
+    } catch {
+      addToast('❌ ปลดบล็อกไม่สำเร็จ', 'error');
     }
   };
 

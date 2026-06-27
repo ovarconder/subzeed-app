@@ -65,6 +65,8 @@
 | **Vercel Deploy Config** | ✅ พร้อม | `vercel.json` + `docs/env-config.md` |
 | **Dynamic API Provider** | ✅ พร้อม | `docs/dynamic-api-providers.md` — Admin เปลี่ยน Provider/Key ได้ผ่าน UI |
 | **AI Smart Translation** | ✅ พร้อม | `docs/ai-smart-translation.md` — แปลซับเป็น 10 ภาษาผ่าน Gemini |
+| **Studio VTT Overlay** | ✅ Stable | `docs/studio-vtt-overlay.md` — WebVTT native track + DOM API inject |
+| **Session Tracking** | 📋 Planned | `docs/session-tracking.md` — ระบบเซฟ draft + Alert session expired |
 
 ---
 

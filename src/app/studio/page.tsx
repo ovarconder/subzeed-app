@@ -55,7 +55,7 @@ function injectVttTrack(video: HTMLVideoElement | null, vttUrl: string) {
   const track = document.createElement('track');
   track.kind = 'subtitles';
   track.src = vttUrl;
-  track.srcLang = 'th';
+  track.srclang = 'th';
   track.label = 'ไทย';
   track.default = true;
   video.appendChild(track);
@@ -87,8 +87,6 @@ export default function StudioPage() {
   const [enableAiSmart, setEnableAiSmart] = useState(false); // AI แปลภาษา
   const [aiSmartLanguage, setAiSmartLanguage] = useState('en'); // ภาษาเป้าหมาย
   const [showWatermarkPreview, setShowWatermarkPreview] = useState(false);
-  // WebVTT blob URL สำหรับ subtitle track (จัดการผ่าน ref ไม่ให้ React mount/unmount video)
-  const vttUrlRef = useRef<string | null>(null);
 
   // Check quota
   const tierConfig = profile ? TIER_CONFIGS[profile.tier] : TIER_CONFIGS.free;

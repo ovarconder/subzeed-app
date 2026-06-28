@@ -49,7 +49,7 @@ function AdminContent() {
   const [users, setUsers] = useState<Profile[]>([]);
   const [billingHistory, setBillingHistory] = useState<BillingHistory[]>([]);
   const [fingerprints, setFingerprints] = useState<any[]>([]);
-  const [stats, setStats] = useState({ totalUsers: 0, activeToday: 0, totalRevenue: 0 });
+  const [stats, setStats] = useState({ totalUsers: 0, todayUsers: 0, activeNow: 0, totalRevenue: 0 });
   const [loading, setLoading] = useState(true);
 
   // Helper: เรียก API route (ใช้ service role bypass RLS)
@@ -105,7 +105,8 @@ function AdminContent() {
         const statsData = await apiGet('/api/admin/stats');
         setStats({
           totalUsers: statsData.totalUsers ?? 0,
-          activeToday: statsData.activeToday ?? 0,
+          todayUsers: statsData.todayUsers ?? 0,
+          activeNow: statsData.activeNow ?? 0,
           totalRevenue: statsData.totalRevenue ?? 0,
         });
       } catch {
@@ -194,10 +195,11 @@ function AdminContent() {
           </div>
         </div>
 
-        {/* Stats Section */}
-        <div className="grid gap-4 sm:grid-cols-3 mb-8">
-          <StatCard label="ผู้ใช้งานทั้งหมด" value={`${stats.totalUsers} คน`} color="text-primary" />
-          <StatCard label="ออนไลน์วันนี้" value={`${stats.activeToday} คน`} color="text-success" />
+        {/* Stats Section — 4 cards 2x2 */}
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-4 mb-8">
+          <StatCard label="ผู้ใช้ทั้งหมด" value={`${stats.totalUsers} คน`} color="text-primary" />
+          <StatCard label="สมัครวันนี้" value={`${stats.todayUsers} คน`} color="text-success" />
+          <StatCard label="กำลังใช้งาน" value={`${stats.activeNow} คน`} color="text-info" />
           <StatCard label="รายได้รวม (ประมาณ)" value={`฿${stats.totalRevenue?.toLocaleString()}`} color="text-warning" />
         </div>
 

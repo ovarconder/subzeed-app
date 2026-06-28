@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const [{ count: totalUsers }, { count: activeToday }, { data: revenueData }] = await Promise.all([
       adminSupabase
         .from('profiles')
-        .select('*', { count: 'exact', head: false }),
+        .select('id', { count: 'exact', head: true }),
       adminSupabase
         .from('profiles')
         .select('*', { count: 'exact', head: false })

@@ -1,3 +1,7 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createServiceSupabase } from '@/lib/supabase/server';
+import { verifyAdmin } from '@/lib/admin-auth';
+
 /**
  * GET /api/admin/stats
  *
@@ -53,3 +57,9 @@ export async function GET(request: NextRequest) {
       activeNow: activeNow ?? 0,
       totalRevenue: totalRevenue ?? 0,
     });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    console.error('[admin/stats] Error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

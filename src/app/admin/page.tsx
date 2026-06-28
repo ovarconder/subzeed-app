@@ -54,7 +54,11 @@ function AdminContent() {
 
   // Helper: เรียก API route (ใช้ service role bypass RLS)
   const apiGet = async (path: string) => {
-    const res = await fetch(path);
+    const res = await fetch(path, {
+      headers: {
+        'x-user-id': user?.id || '',
+      },
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || `API ${path}: ${res.status}`);

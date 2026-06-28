@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/server';
+import { createServiceSupabase } from '@/lib/supabase/server';
+import { verifyAdmin } from '@/lib/admin-auth';
 
 /**
  * GET /api/admin/users?abusers=true
@@ -9,25 +10,9 @@ import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/serv
  */
 export async function GET(request: NextRequest) {
   try {
-    // ─── ตรวจสอบสิทธิ์ Admin ───────────────────────────
-    const supabase = await createServerSupabase();
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // เช็คว่าเป็น super admin
+    await verifyAdmin(request);
     const adminSupabase = createServiceSupabase();
-    const { data: profile } = await adminSupabase
-      .from('profiles')
-      .select('tier, email, is_super_admin')
-      .eq('id', session.user.id)
-      .single();
-
-    if (!profile || (profile.is_super_admin !== true && profile.email !== 'overconda@gmail.com')) {
-      return NextResponse.json({ error: 'Forbidden: Admin only' }, { status: 403 });
-    }
+    
 
     // ─── ดึงข้อมูล ────────────────────────────────────
     const searchParams = request.nextUrl.searchParams;

@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { createServiceSupabase } from '@/lib/supabase/server';
 
 /**
  * GET /api/admin/stats
@@ -10,28 +10,13 @@ import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/serv
  * - รายได้รวม
  *
  * ใช้ Service Role เพื่อ bypass RLS
- * ไม่พึ่ง RPC get_admin_stats (เผื่อยังไม่มีใน DB)
+ * รับ x-user-id จาก header แทน getSession (Next.js 16 Route Handler)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // ─── Auth check ───────────────────────────────────
-    const supabase = await createServerSupabase();
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    await verifyAdmin(request);
     const adminSupabase = createServiceSupabase();
-    const { data: profile } = await adminSupabase
-      .from('profiles')
-      .select('tier, email, is_super_admin')
-      .eq('id', session.user.id)
-      .single();
-
-    if (!profile || (profile.is_super_admin !== true && profile.email !== 'overconda@gmail.com')) {
-      return NextResponse.json({ error: 'Forbidden: Admin only' }, { status: 403 });
-    }
+    
 
     // ─── Stats ─────────────────────────────────────────
     const today = new Date().toISOString().split('T')[0];

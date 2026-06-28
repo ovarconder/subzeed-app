@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/server';
+import { createServiceSupabase } from '@/lib/supabase/server';
+import { verifyAdmin } from '@/lib/admin-auth';
 
 /**
  * POST /api/admin/users/unblock
@@ -7,24 +8,9 @@ import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/serv
  */
 export async function POST(request: NextRequest) {
   try {
-    // ─── Auth check ───────────────────────────────────
-    const supabase = await createServerSupabase();
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    await verifyAdmin(request);
     const adminSupabase = createServiceSupabase();
-    const { data: profile } = await adminSupabase
-      .from('profiles')
-      .select('tier, email, is_super_admin')
-      .eq('id', session.user.id)
-      .single();
-
-    if (!profile || (profile.is_super_admin !== true && profile.email !== 'overconda@gmail.com')) {
-      return NextResponse.json({ error: 'Forbidden: Admin only' }, { status: 403 });
-    }
+    
 
     // ─── Unblock ───────────────────────────────────────
     const { userId } = await request.json();

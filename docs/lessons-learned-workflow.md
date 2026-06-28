@@ -35,74 +35,64 @@
 
 ---
 
-## 🧩 สถานะปัจจุบันของแต่ละระบบ
+## 🐛 Next.js 16 API Route Auth — ห้ามใช้ `getSession()` ใน Route Handler
 
-| Component | Status | หมายเหตุ |
-|-----------|--------|----------|
-| Next.js App Router | ✅ Setup แล้ว | `src/app/` |
-| Tailwind v4 | ✅ Setup แล้ว | `globals.css` |
-| Supabase Client/Server | ✅ Setup แล้ว | `src/lib/supabase/` |
-| Zustand Store | ✅ Setup แล้ว | `src/lib/store/` |
-| Auth (Login/Signup) | ✅ พร้อม | Fingerprint protection integrated |
-| Dashboard | ✅ พร้อม | แสดง quota bar + projects grid |
-| Studio (Video Editor) | ✅ พร้อม | Drag-drop video + subtitle overlay |
-| Billing History | ✅ พร้อม | `src/app/billing/` |
-| Client Review | ✅ พร้อม | `src/app/review/[token]/` |
-| Stripe Payment | ✅ พร้อม | Checkout + Webhook + Dev Mode — `docs/payment-stripe.md` |
-| Whisper API | ✅ พร้อม | `src/app/api/transcribe/` |
-| Gemini API | ✅ พร้อม | `src/app/api/gemini-vocab/` — รองรับทั้ง Vocab + Translation |
-| Fingerprint Anti-Abuse | ✅ พร้อม | Migration + Routes + Hook |
-| SQL Schema | ✅ พร้อม | `supabase/` — 5 migration files |
-| Admin Dashboard | ✅ พร้อม | 5 tabs + User/Abuser/Billing/Fingerprint/Settings/API Config + Reports — `docs/admin-dashboard.md` |
-| Invoice PDF Gen | ✅ พร้อม | Client-side jspdf + Server fallback HTML — `docs/invoice-pdf.md` |
-| **FingerprintJS Library** | ⏳ **ยังไม่ติดตั้ง** | ต้อง `npm install @fingerprintjs/fingerprintjs` |
-| **Env Config (.env.local)** | ⏳ **ยังไม่มี** | ดู `docs/env-config.md` |
-| **Watermark on Free** | ✅ พร้อม | Canvas overlay บนวิดีโอ |
-| **Text Animation (Premium)** | ✅ พร้อม | typewriter · slide · highlight |
-| **Audio Extraction** | ✅ พร้อม | `src/lib/audio-extractor.ts` — Client-side WAV 16kHz |
-| **Thai STT Pipeline** | ✅ พร้อม | `transcribe` + `transcribe-and-save` — Quota check + หักอัตโนมัติ |
-| **SRT/VTT Export** | ✅ พร้อม | Export JSON → SRT |
-| **Vercel Deploy Config** | ✅ พร้อม | `vercel.json` + `docs/env-config.md` |
-| **Dynamic API Provider** | ✅ พร้อม | `docs/dynamic-api-providers.md` — Admin เปลี่ยน Provider/Key ได้ผ่าน UI |
-| **AI Smart Translation** | ✅ พร้อม | `docs/ai-smart-translation.md` — แปลซับเป็น 10 ภาษาผ่าน Gemini |
-| **Studio VTT Overlay** | ✅ Stable | `docs/studio-vtt-overlay.md` — WebVTT native track + DOM API inject |
-| **Session Tracking** | 📋 Planned | `docs/session-tracking.md` — ระบบเซฟ draft + Alert session expired |
+### ปัญหา
+Next.js 16 (App Router) — `createServerSupabase()` ที่ใช้ `await cookies()` ไม่สามารถ
+อ่าน session cookies ใน Route Handler (API routes) ได้ ทำให้ `getSession()` คืน `null` เสมอ
+→ API route คืน `401 Unauthorized` ตลอด
 
----
+### วิธีแก้
+1. **สร้าง helper `verifyAdmin(request)`** ที่รับ `x-user-id` header จาก client-side แทน
+   - Client-side ส่ง `user?.id` ใน header (มาจาก `useAuth()`)
+   - Server-side ใช้ `createServiceSupabase()` (service role) query profile โดยตรง
+   - ถ้าไม่ใช่ admin → throws error
 
-## 🔧 คำสั่งที่ใช้บ่อย
+2. **ไฟล์: `src/lib/admin-auth.ts`**
 
-```bash
-# ใช้ nvm ก่อนทุกครั้ง (VSCode ต้องรันก่อน)
-nvm use
+```ts
+export async function verifyAdmin(request: NextRequest): Promise<string> {
+  const userId = request.headers.get('x-user-id');
+  if (!userId) throw new Error('Unauthorized');
 
-# Dev
-npm run dev
+  const adminSupabase = createServiceSupabase();
+  const { data: profile } = await adminSupabase
+    .from('profiles')
+    .select('is_super_admin, email')
+    .eq('id', userId)
+    .single();
 
-# Build (ถ้า nvm ยังไม่โหลด ให้รัน nvm use ก่อน)
-npm run build
-
-# Install deps
-npm install
-
-# Deploy to Vercel
-npx vercel --prod
+  if (!profile || (profile.is_super_admin !== true && profile.email !== 'overconda@gmail.com')) {
+    throw new Error('Forbidden: Admin only');
+  }
+  return userId;
+}
 ```
 
----
+3. **วิธีใช้ใน API route:**
 
-## ⚡ ข้อควรรู้สำหรับ VSCode Terminal
-
-VSCode Terminal เวอร์ชั่นล่าสุด **ไม่สามารถใช้ npm โดยตรง** ต้องรัน `nvm use` ก่อนทุกครั้งที่เปิด Terminal ใหม่:
-
-```bash
-# ตอนเปิด Terminal ครั้งแรก
-nvm use
-# → Now using node v20.x.x
-
-# แล้วค่อยใช้ npm
-npm run dev
+```ts
+export async function GET(request: NextRequest) {
+  try {
+    await verifyAdmin(request);
+    const adminSupabase = createServiceSupabase();
+    // ... query data
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Internal server error';
+    return NextResponse.json({ error: msg }, { status: msg === 'Unauthorized' ? 401 : 403 });
+  }
+}
 ```
+
+### ไฟล์ที่ต้องเปลี่ยน
+- `src/app/api/admin/*/route.ts` — ทุก route ที่ใช้ `createServerSupabase().getSession()`
+- `src/app/admin/page.tsx` — เพิ่ม `headers: { 'x-user-id': user?.id }` ตอนเรียก API
+
+### ข้อควรระวัง
+- วิธีนี้ **ไม่ปลอดภัยเท่า cookie-based** เพราะ `x-user-id` ถูกส่งผ่าน HTTP header
+- แต่สำหรับ admin dashboard ที่ผ่าน Auth Guard ใน client-side อยู่แล้ว ถือว่า accept ได้
+- วิธีที่ถูกต้องคือใช้ `getUser()` (verify access token) แทน `getSession()` (read cookie)
+  — แต่ต้อง refactor ครั้งใหญ่
 
 ---
 

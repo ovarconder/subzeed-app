@@ -56,6 +56,12 @@ src/
 
 ## 3. API Reference
 
+> ⚠️ **Auth Pattern**: Admin API routes ทั้งหมดใช้ `verifyAdmin(request)` helper แทน
+> `createServerSupabase().getSession()` เพราะ Next.js 16 Route Handler ไม่สามารถ
+> อ่าน cookies จาก `next/headers` ได้โดยตรง ดู `src/lib/admin-auth.ts`
+>
+> **Client-side** ส่ง `x-user-id` header ไปทุก request (มาจาก `user?.id` ของ Auth Provider)
+
 ### 3.1 `GET /api/admin/users`
 
 ดึงรายชื่อผู้ใช้ทั้งหมด (ใช้ Service Role bypass RLS)
@@ -186,13 +192,15 @@ src/
 
 ### ปัญหาที่แก้แล้ว
 
-1. **Stats เป็น 0 ตลอด** — RPC `get_admin_stats` ไม่มีใน DB → migration 006
+1. **Stats เป็น 0 ตลอด** — RPC `get_admin_stats` ไม่มีใน DB → migration 006 + สร้าง API route `/api/admin/stats` query ตรง
 2. **ดูข้อมูลคนอื่นไม่ได้** — ใช้ client-side Supabase (anon key + RLS) → เปลี่ยนเป็น API route (service role)
 3. **`is_blocked` filter** — field นี้ไม่มีใน profiles → ใช้ `is_quota_abuser` แทน
 4. **`is_super_admin` ไม่ถูก set** — migration 006: `UPDATE profiles SET is_super_admin = TRUE WHERE email = 'overconda@gmail.com'`
 5. **Fingerprint tab error** — reference `user_fingerprints` (ไม่มี) → แก้ migration เป็น `fingerprint_history`
 6. **fetchData ใช้ undefined function** — `fetchFromApi` ไม่มีอยู่ → เปลี่ยนเป็น `apiGet`
 7. **Update/Unblock ใช้ client-side** → RLS บล็อก → เปลี่ยนเป็น API route `POST /api/admin/users/update-tier` และ `POST /api/admin/users/unblock`
+8. **Stats แสดง undefined** — RPC `get_admin_stats` ยังไม่มี → เปลี่ยนใช้ API route `/api/admin/stats`
+9. **getSession() ใน API Route ไม่ทำงาน (Next.js 16)** — `createServerSupabase().getSession()` ได้ session เป็น null เสมอ → เปลี่ยนเป็น `verifyAdmin(request)` helper ที่รับ `x-user-id` header จาก client-side
 
 ### กฎสำคัญ
 - ✅ **ห้ามใช้ client-side Supabase ใน admin pages** — ใช้ API route + service role เสมอ

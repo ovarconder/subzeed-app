@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceSupabase } from '@/lib/supabase/server';
+import { verifyAdmin } from '@/lib/admin-auth';
 
 /**
  * GET /api/admin/stats

@@ -22,13 +22,14 @@ export async function GET(request: NextRequest) {
     // ─── Stats ─────────────────────────────────────────
     const today = new Date().toISOString().split('T')[0];
 
+    // head: true → ไม่ return rows → count = 0 เสมอ ต้องใช้ head: false
     const [{ count: totalUsers }, { count: activeToday }, { data: revenueData }] = await Promise.all([
       adminSupabase
         .from('profiles')
-        .select('*', { count: 'exact', head: true }),
+        .select('*', { count: 'exact', head: false }),
       adminSupabase
         .from('profiles')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: false })
         .gte('updated_at', today),
       adminSupabase
         .from('billing_history')
@@ -52,3 +53,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+

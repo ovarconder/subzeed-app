@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/auth/auth-provider';
 import { useToast } from '@/components/ui/toaster';
 import { Button } from '@/components/ui/button';
+import { api } from '@/lib/api';
 import UsersTable from '@/components/admin/UsersTable';
 import BillingTable from '@/components/admin/BillingTable';
 import FingerprintsTable from '@/components/admin/FingerprintsTable';
@@ -54,7 +55,7 @@ function AdminContent() {
 
   // Helper: เรียก API route (ใช้ service role bypass RLS)
   const apiGet = async (path: string) => {
-    const res = await fetch(path, {
+    const res = await fetch(api(path), {
       headers: {
         'x-user-id': user?.id || '',
       },
@@ -127,7 +128,7 @@ function AdminContent() {
 
   const handleUpdateTier = async (userId: string, tier: string) => {
     try {
-      const res = await fetch('/api/admin/users/update-tier', {
+      const res = await fetch(api('/api/admin/users/update-tier'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, tier }),
@@ -153,7 +154,7 @@ function AdminContent() {
 
   const handleUnblock = async (userId: string) => {
     try {
-      const res = await fetch('/api/admin/users/unblock', {
+      const res = await fetch(api('/api/admin/users/unblock'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),

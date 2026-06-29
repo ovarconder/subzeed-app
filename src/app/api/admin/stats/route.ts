@@ -25,19 +25,19 @@ export async function GET(request: NextRequest) {
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
     const [{ count: totalUsers }, { count: todayUsers }, { count: activeNow }, { data: revenueData }] = await Promise.all([
-      // นับผู้ใช้ทั้งหมด — ใช้ head: true (ไม่ต้องโหลด rows)
+      // นับผู้ใช้ทั้งหมด — ใช้ head: false, count: exact (head: true ไม่ทำงานกับ count)
       adminSupabase
         .from('profiles')
-        .select('id', { count: 'exact', head: true }),
+        .select('id', { count: 'exact', head: false }),
       // นับผู้ใช้ที่สมัครวันนี้ (created_at >= วันนี้)
       adminSupabase
         .from('profiles')
-        .select('id', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: false })
         .gte('created_at', today),
       // นับผู้ใช้ที่ active ใน 5 นาทีล่าสุด (updated_at)
       adminSupabase
         .from('profiles')
-        .select('id', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: false })
         .gte('updated_at', fiveMinAgo),
       // รวมรายได้
       adminSupabase

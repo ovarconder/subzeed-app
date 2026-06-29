@@ -2,49 +2,45 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceSupabase } from '@/lib/supabase/server';
 import { verifyAdmin } from '@/lib/admin-auth';
 
-/**
- * GET /api/admin/stats
- *
- * ดึงสถิติภาพรวม (Admin only)
- * - totalUsers: จำนวนผู้ใช้ทั้งหมด
- * - todayUsers: ผู้ใช้ที่สมัครวันนี้
- * - activeNow: ผู้ใช้ที่ active ใน 5 นาทีล่าสุด
- * - totalRevenue: รายได้รวม
- *
- * ใช้ Service Role เพื่อ bypass RLS
- * รับ x-user-id จาก header แทน getSession (Next.js 16 Route Handler)
- */
 export async function GET(request: NextRequest) {
   try {
     await verifyAdmin(request);
     const adminSupabase = createServiceSupabase();
-    
 
-    // ─── Stats ─────────────────────────────────────────
     const today = new Date().toISOString().split('T')[0];
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-    const [{ count: totalUsers }, { count: todayUsers }, { count: activeNow }, { data: revenueData }] = await Promise.all([
-      // นับผู้ใช้ทั้งหมด — select('*') เท่านั้นที่ได้ count (select('id') ไม่ได้ count)
+    const [
+      { count: totalUsers, error: e1 },
+      { count: todayUsers, error: e2 },
+      { count: activeNow, error: e3 },
+      { data: revenueData, error: e4 },
+    ] = await Promise.all([
+      // ✅ head: true = COUNT only, ไม่ดึง rows
       adminSupabase
         .from('profiles')
-        .select('*', { count: 'exact', head: false }),
-      // นับผู้ใช้ที่สมัครวันนี้ (created_at >= วันนี้)
+        .select('*', { count: 'exact', head: true }),
+
       adminSupabase
         .from('profiles')
-        .select('*', { count: 'exact', head: false })
+        .select('*', { count: 'exact', head: true })
         .gte('created_at', today),
-      // นับผู้ใช้ที่ active ใน 5 นาทีล่าสุด (updated_at)
+
       adminSupabase
         .from('profiles')
-        .select('*', { count: 'exact', head: false })
+        .select('*', { count: 'exact', head: true })
         .gte('updated_at', fiveMinAgo),
-      // รวมรายได้
+
       adminSupabase
         .from('billing_history')
         .select('amount_thb')
         .eq('payment_status', 'success'),
     ]);
+
+    // log เพื่อ debug (ลบออกได้ทีหลัง)
+    if (e1 || e2 || e3 || e4) {
+      console.error('[admin/stats] Query errors:', { e1, e2, e3, e4 });
+    }
 
     const totalRevenue = (revenueData || []).reduce(
       (sum: number, r: { amount_thb: number }) => sum + (r.amount_thb || 0),
@@ -55,7 +51,7 @@ export async function GET(request: NextRequest) {
       totalUsers: totalUsers ?? 0,
       todayUsers: todayUsers ?? 0,
       activeNow: activeNow ?? 0,
-      totalRevenue: totalRevenue ?? 0,
+      totalRevenue,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';

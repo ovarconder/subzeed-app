@@ -21,6 +21,7 @@ interface SubtitleOverlayProps {
   tier: SubscriptionTier;
   animationStyle?: AnimationStyle;
   fontFamily?: string;
+  fontSize?: number;
 }
 
 export function SubtitleOverlay({
@@ -29,6 +30,7 @@ export function SubtitleOverlay({
   tier,
   animationStyle = 'fade',
   fontFamily,
+  fontSize = 20,
 }: SubtitleOverlayProps) {
   const tierConfig = TIER_CONFIGS[tier];
   const canAnimate = tierConfig.textAnimation;
@@ -43,6 +45,7 @@ export function SubtitleOverlay({
         text={subtitle.text}
         animation={actualAnimation}
         fontFamily={fontFamily || tierConfig.fonts[0] || 'Arial'}
+        fontSize={fontSize}
         isActive={currentTime >= subtitle.start && currentTime <= subtitle.end}
       />
     </div>
@@ -57,10 +60,11 @@ interface AnimatedTextProps {
   text: string;
   animation: AnimationStyle;
   fontFamily: string;
+  fontSize: number;
   isActive: boolean;
 }
 
-function AnimatedText({ text, animation, fontFamily, isActive }: AnimatedTextProps) {
+function AnimatedText({ text, animation, fontFamily, fontSize, isActive }: AnimatedTextProps) {
   const [displayText, setDisplayText] = useState('');
   const [highlightIdx, setHighlightIdx] = useState(-1);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -117,8 +121,8 @@ function AnimatedText({ text, animation, fontFamily, isActive }: AnimatedTextPro
   if (animation === 'typewriter') {
     return (
       <span
-        className={`inline-block bg-black/60 px-4 py-2 rounded-lg text-white text-xl ${slideClass}`}
-        style={{ fontFamily }}
+        className={`inline-block bg-black/60 px-4 py-2 rounded-lg text-white ${slideClass}`}
+        style={{ fontFamily, fontSize }}
       >
         {displayText}
         {isActive && displayText.length < text.length && (
@@ -132,8 +136,8 @@ function AnimatedText({ text, animation, fontFamily, isActive }: AnimatedTextPro
     const words = text.split(' ');
     return (
       <span
-        className={`inline-block bg-black/60 px-4 py-2 rounded-lg text-white text-xl ${slideClass}`}
-        style={{ fontFamily }}
+        className={`inline-block bg-black/60 px-4 py-2 rounded-lg text-white ${slideClass}`}
+        style={{ fontFamily, fontSize }}
       >
         {words.map((word, i) => (
           <span
@@ -152,10 +156,10 @@ function AnimatedText({ text, animation, fontFamily, isActive }: AnimatedTextPro
   // Default: fade
   return (
     <span
-      className={`inline-block bg-black/60 px-4 py-2 rounded-lg text-white text-xl ${
+      className={`inline-block bg-black/60 px-4 py-2 rounded-lg text-white ${
         isActive ? 'animate-fade-in' : ''
       } ${slideClass}`}
-      style={{ fontFamily }}
+      style={{ fontFamily, fontSize }}
     >
       {displayText || text}
     </span>

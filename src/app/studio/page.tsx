@@ -4,7 +4,13 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/layout/navbar';
 import { Button } from '@/components/ui/button';
+import { SubtitleItem } from '@/components/studio/subtitle-item';
+import { SubtitleOverlay } from '@/components/studio/subtitle-overlay';
+import { SubtitleSettingsBar } from '@/components/studio/subtitle-settings-bar';
+import { renderVideoWithSubtitles, downloadVideoBlob, EXPORT_FORMATS, QUALITY_PRESETS, supportsHardwareAccel } from '@/lib/video-renderer';
+import type { ExportFormat, QualityPreset } from '@/lib/video-renderer';
 import { createClient } from '@/lib/supabase/client';
+import { useVideoStorage } from '@/lib/hooks/use-video-storage';
 import { useAuth } from '@/components/auth/auth-provider';
 import { useSubtitleStore } from '@/lib/store/subtitle-store';
 import { useToast } from '@/components/ui/toaster';
@@ -80,6 +86,9 @@ export default function StudioPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const vttUrlRef = useRef<string | null>(null);
+
+  // Local video storage (IndexedDB)
+  const { storeVideo, loadVideo, removeVideo } = useVideoStorage();
   const [subtitleText, setSubtitleText] = useState('');
   const [videoDuration, setVideoDuration] = useState(0);
   const [brandTerms, setBrandTerms] = useState('');
@@ -87,6 +96,18 @@ export default function StudioPage() {
   const [enableAiSmart, setEnableAiSmart] = useState(false); // AI แปลภาษา
   const [aiSmartLanguage, setAiSmartLanguage] = useState('en'); // ภาษาเป้าหมาย
   const [showWatermarkPreview, setShowWatermarkPreview] = useState(false);
+
+  // ---- Subtitle Display Settings ----
+  const [selectedFontFamily, setSelectedFontFamily] = useState('Arial');
+  const [selectedFontSize, setSelectedFontSize] = useState(20);
+
+  // -- Export Video State --
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('mp4');
+  const [exportQuality, setExportQuality] = useState<QualityPreset>('high');
+  const [useHardwareAccel, setUseHardwareAccel] = useState(supportsHardwareAccel());
+  const [gifMaxWidth, setGifMaxWidth] = useState(480);
 
   // Check quota
   const tierConfig = profile ? TIER_CONFIGS[profile.tier] : TIER_CONFIGS.free;
@@ -108,7 +129,7 @@ export default function StudioPage() {
     // Check duration via video element
     const tempVideo = document.createElement('video');
     tempVideo.preload = 'metadata';
-    tempVideo.onloadedmetadata = () => {
+    tempVideo.onloadedmetadata = async () => {
       const dur = tempVideo.duration;
       const maxDur = tierConfig.maxVideoMinutes * 60;
       if (dur > maxDur) {
@@ -117,11 +138,27 @@ export default function StudioPage() {
         return;
       }
       setVideoDuration(dur);
-      store.setVideoFile(file);
+
+      // ✅ เก็บวิดีโอลง IndexedDB (local) โดยใช้ projectId ชั่วคราว
+      const tempProjectId = `project_${Date.now()}`;
+      await storeVideo(tempProjectId, file);
+      store.setCurrentProject({
+        id: tempProjectId,
+        user_id: user?.id || '',
+        title: file.name,
+        video_url: null,
+        duration_seconds: dur,
+        subtitles: [],
+        is_client_review_enabled: false,
+        review_token: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
       URL.revokeObjectURL(tempVideo.src);
     };
     tempVideo.src = URL.createObjectURL(file);
-  }, [tierConfig, addToast]);
+  }, [tierConfig, addToast, storeVideo, user]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -261,6 +298,61 @@ export default function StudioPage() {
     } else {
       addToast('บันทึกโปรเจกต์สำเร็จ', 'success');
       router.push('/dashboard');
+    }
+  };
+
+  // ---- Refresh VTT track after edits ----
+  const refreshVttTrack = useCallback(() => {
+    const subs = store.subtitles;
+    if (subs.length === 0) {
+      if (vttUrlRef.current) {
+        URL.revokeObjectURL(vttUrlRef.current);
+        vttUrlRef.current = null;
+      }
+      return;
+    }
+    const vttContent = generateVtt(subs);
+    const blob = new Blob([vttContent], { type: 'text/vtt' });
+    const newUrl = URL.createObjectURL(blob);
+    if (vttUrlRef.current) URL.revokeObjectURL(vttUrlRef.current);
+    vttUrlRef.current = newUrl;
+    injectVttTrack(videoRef.current, newUrl);
+  }, [store.subtitles]);
+
+  // ---- Export Video with Hardsub ----
+  const handleExportVideo = async () => {
+    if (!store.videoUrl || store.subtitles.length === 0) return;
+
+    setIsExporting(true);
+    setExportProgress(0);
+
+    try {
+      const blob = await renderVideoWithSubtitles(
+        store.videoUrl,
+        store.subtitles,
+        {
+          fontFamily: selectedFontFamily,
+          fontSize: selectedFontSize,
+          y_offset: 90,
+          format: exportFormat,
+          position: 'bottom',
+          quality: exportQuality,
+          useHardwareAccel,
+          gifMaxWidth,
+          gifFrameSkip: exportFormat === 'gif' ? 1 : 0,
+          fps: exportFormat === 'gif' ? 10 : 30,
+        },
+        (pct) => setExportProgress(pct),
+      );
+
+      const baseName = store.videoFile?.name?.replace(/\.[^.]+$/, '') || 'subzeed-video';
+      downloadVideoBlob(blob, `${baseName}-subzeed.${exportFormat}`);
+      addToast(`ดาวน์โหลดวิดีโอ (${exportFormat.toUpperCase()}) ที่ฝังซับแล้ว!`, 'success');
+    } catch (err: any) {
+      addToast(`ส่งออกวิดีโอไม่สำเร็จ: ${err.message}`, 'error');
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
     }
   };
 
@@ -459,6 +551,17 @@ export default function StudioPage() {
             </div>
           </div>
 
+          {/* Subtitle Display Settings Bar */}
+          {store.subtitles.length > 0 && (
+            <SubtitleSettingsBar
+              tier={profile?.tier || 'free'}
+              fontFamily={selectedFontFamily}
+              fontSize={selectedFontSize}
+              onFontFamilyChange={setSelectedFontFamily}
+              onFontSizeChange={setSelectedFontSize}
+            />
+          )}
+
           {/* Video + Subtitles + Watermark Area */}
           <div
             className="relative flex-1 bg-black flex items-center justify-center"
@@ -472,6 +575,11 @@ export default function StudioPage() {
                   src={store.videoUrl}
                   controls
                   className="max-w-full max-h-full"
+                />
+                {/* Canvas for watermark overlay (free tier) */}
+                <canvas
+                  ref={canvasRef}
+                  className="absolute inset-0 pointer-events-none"
                 />
               </div>
             ) : (
@@ -535,26 +643,114 @@ export default function StudioPage() {
                 )}
               </div>
             ) : (
-              <div className="divide-y divide-border">
-                {store.subtitles.map((sub, i) => (
-                  <div
-                    key={sub.id}
-                    className={`p-3 cursor-pointer hover:bg-surface text-sm ${
-                      store.selectedSubtitleId === sub.id ? 'bg-primary-light' : ''
-                    }`}
-                    onClick={() => {
-                      store.selectSubtitle(sub.id);
-                      if (videoRef.current) videoRef.current.currentTime = sub.start;
-                    }}
-                  >
-                    <div className="flex justify-between text-xs text-muted mb-1">
-                      <span>#{i + 1}</span>
-                      <span>{sub.start.toFixed(1)}s → {sub.end.toFixed(1)}s</span>
+              <>
+                <div className="divide-y divide-border">
+                  {store.subtitles.map((sub, i) => (
+                    <SubtitleItem
+                      key={sub.id}
+                      sub={sub}
+                      index={i}
+                      isSelected={store.selectedSubtitleId === sub.id}
+                      videoRef={videoRef}
+                      onSelect={() => {
+                        store.selectSubtitle(sub.id);
+                        if (videoRef.current) videoRef.current.currentTime = sub.start;
+                      }}
+                      onUpdate={(updates) => {
+                        store.updateSubtitle(sub.id, updates);
+                        refreshVttTrack();
+                      }}
+                      onDelete={() => {
+                        store.removeSubtitle(sub.id);
+                        refreshVttTrack();
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Export Video Button */}
+                <div className="p-3 border-t border-border space-y-2">
+                  {isExporting ? (
+                    <div className="text-center">
+                      <p className="text-xs text-text-secondary mb-1">กำลังเรนเดอร์วิดีโอ {exportProgress}%</p>
+                      <div className="w-full h-1.5 bg-border rounded-full overflow-hidden">
+                        <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${exportProgress}%` }} />
+                      </div>
                     </div>
-                    <p className="line-clamp-2">{sub.text}</p>
-                  </div>
-                ))}
-              </div>
+                  ) : (
+                    <>
+                      {/* Format */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] text-text-secondary font-medium w-14">Format:</label>
+                        <select
+                          value={exportFormat}
+                          onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                          className="flex-1 rounded border border-border px-2 py-1 text-xs bg-white"
+                        >
+                          {EXPORT_FORMATS.map((f) => (
+                            <option key={f.value} value={f.value}>{f.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Quality (ไม่แสดงสำหรับ GIF เพราะ quality ต่างกัน) */}
+                      {exportFormat !== 'gif' && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-[10px] text-text-secondary font-medium w-14">คุณภาพ:</label>
+                          <select
+                            value={exportQuality}
+                            onChange={(e) => setExportQuality(e.target.value as QualityPreset)}
+                            className="flex-1 rounded border border-border px-2 py-1 text-xs bg-white"
+                          >
+                            {QUALITY_PRESETS.map((q) => (
+                              <option key={q.value} value={q.value}>{q.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* GIF options */}
+                      {exportFormat === 'gif' && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-[10px] text-text-secondary font-medium w-14">ความกว้าง:</label>
+                          <input
+                            type="number"
+                            min={120}
+                            max={1920}
+                            step={10}
+                            value={gifMaxWidth}
+                            onChange={(e) => setGifMaxWidth(Number(e.target.value))}
+                            className="flex-1 rounded border border-border px-2 py-1 text-xs bg-white"
+                          />
+                          <span className="text-[10px] text-text-secondary">px</span>
+                        </div>
+                      )}
+
+                      {/* Hardware acceleration (เฉพาะ Mac) */}
+                      {supportsHardwareAccel() && exportFormat !== 'gif' && (
+                        <label className="flex items-center gap-1.5 text-[10px] text-text-secondary cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={useHardwareAccel}
+                            onChange={(e) => setUseHardwareAccel(e.target.checked)}
+                            className="accent-primary"
+                          />
+                          🚀 เร่งด้วย GPU (VideoToolbox)
+                        </label>
+                      )}
+
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        className="w-full"
+                        onClick={handleExportVideo}
+                      >
+                        ⬇️ ดาวน์โหลด ({exportFormat.toUpperCase()})
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>

@@ -229,7 +229,7 @@ export async function renderVideoWithSubtitles(
   await ff.deleteFile('subs.ass');
 
   onProgress?.(99);
-  const blob = new Blob([data as Uint8Array], { type: mimeOf(opts.format) });
+  const blob = new Blob([data.buffer], { type: mimeOf(opts.format) });
   onProgress?.(100);
   return blob;
 }

@@ -94,12 +94,20 @@ export default function DashboardPage() {
                   <span className="text-sm font-medium">โควตาคงเหลือ</span>
                   <TierBadge tier={profile.tier} />
                 </div>
-                <span className="text-sm text-text-secondary">
-                  ครบรอบ:{' '}
-                  {new Date(profile.billing_cycle_end).toLocaleDateString('th-TH')}
-                </span>
+                {profile.tier === 'unlimited' ? (
+                  <span className="text-xs text-success font-medium">♾️ ไม่จำกัด</span>
+                ) : (
+                  <span className="text-sm text-text-secondary">
+                    ครบรอบ:{' '}
+                    {new Date(profile.billing_cycle_end).toLocaleDateString('th-TH')}
+                  </span>
+                )}
               </div>
-              <QuotaBar used={profile.quota_minutes_used} total={profile.quota_minutes_total} />
+              {profile.tier === 'unlimited' ? (
+                <p className="text-sm text-text-secondary">คุณสามารถใช้งานได้ทุกฟีเจอร์โดยไม่จำกัดนาที</p>
+              ) : (
+                <QuotaBar used={profile.quota_minutes_used} total={profile.quota_minutes_total} />
+              )}
             </div>
           )}
 

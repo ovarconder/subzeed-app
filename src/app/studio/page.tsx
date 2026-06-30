@@ -113,10 +113,11 @@ export default function StudioPage() {
   const tierConfig = profile ? TIER_CONFIGS[profile.tier] : TIER_CONFIGS.free;
   const quotaLeft = profile ? profile.quota_minutes_total - profile.quota_minutes_used : 0;
   const isFree = profile?.tier === 'free';
-  const isPremiumOrUp = profile?.tier === 'premium' || profile?.tier === 'business_starter' || profile?.tier === 'business_pro';
+  const isPremiumOrUp = profile?.tier === 'premium' || profile?.tier === 'business_starter' || profile?.tier === 'business_pro' || profile?.tier === 'unlimited';
   // ตรวจสอบว่า tier นี้มีสิทธิ์ใช้ AI Smart (Translation) หรือไม่
   const hasAiSmart = profile ? TIER_CONFIGS[profile.tier]?.aiVocabulary : false;
   const hasAiVocab = profile ? TIER_CONFIGS[profile.tier]?.aiVocabulary : false;
+  const isUnlimited = profile?.tier === 'unlimited';
 
   // ---- Video Handling ----
   const handleFileSelect = useCallback((file: File) => {
@@ -185,7 +186,7 @@ export default function StudioPage() {
     }
 
     const estimatedMinutes = Math.ceil(videoDuration / 60);
-    if (estimatedMinutes > quotaLeft) {
+    if (!isUnlimited && estimatedMinutes > quotaLeft) {
       addToast(`โควตาไม่เพียงพอ ต้องการ ${estimatedMinutes} นาที แต่มี ${quotaLeft.toFixed(1)} นาที`, 'error');
       return;
     }
@@ -417,7 +418,7 @@ export default function StudioPage() {
       // ★★★ สำคัญ: clear canvas ก่อนวาดทุกครั้ง ★★★
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      if (isFree) {
+      if (isFree && !isUnlimited) {
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         ctx.font = '14px Arial';
@@ -547,7 +548,11 @@ export default function StudioPage() {
               {isFree && (
                 <span className="text-xs text-warning">🔒 ลายน้ำ</span>
               )}
-              {quotaLeft.toFixed(1)} / {profile?.quota_minutes_total || 20} นาที
+              {isUnlimited ? (
+                <span className="text-xs text-success font-medium">♾️ ไม่จำกัด</span>
+              ) : (
+                <>{quotaLeft.toFixed(1)} / {profile?.quota_minutes_total || 20} นาที</>
+              )}
             </div>
           </div>
 

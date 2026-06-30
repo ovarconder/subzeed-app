@@ -6,6 +6,7 @@ const tierColors: Record<SubscriptionTier, string> = {
   premium: 'bg-purple-100 text-purple-700',
   business_starter: 'bg-amber-100 text-amber-700',
   business_pro: 'bg-emerald-100 text-emerald-700',
+  unlimited: 'bg-gradient-to-r from-pink-100 via-purple-100 to-indigo-100 text-indigo-700',
 };
 
 const tierLabels: Record<SubscriptionTier, string> = {
@@ -14,6 +15,7 @@ const tierLabels: Record<SubscriptionTier, string> = {
   premium: 'Premium',
   business_starter: 'Business Starter',
   business_pro: 'Business Pro',
+  unlimited: '♾️ Unlimited',
 };
 
 export function TierBadge({ tier }: { tier: SubscriptionTier }) {

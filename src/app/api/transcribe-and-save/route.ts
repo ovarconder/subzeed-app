@@ -71,7 +71,10 @@ export async function POST(request: NextRequest) {
     const estimatedMinutes = Math.ceil(estimatedDurationSeconds / 60);
     const quotaLeft = profile.quota_minutes_total - profile.quota_minutes_used;
 
-    if (estimatedMinutes > quotaLeft) {
+    // ─── Unlimited Tier — ข้าม quota check + ไม่หักนาที ──
+    const isUnlimited = profile.tier === 'unlimited';
+
+    if (!isUnlimited && estimatedMinutes > quotaLeft) {
       return NextResponse.json(
         {
           error: `โควตาไม่เพียงพอ ต้องการ ${estimatedMinutes} นาที`,
@@ -205,15 +208,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ─── 7. หัก Quota ─────────────────────────────────
-    const newUsed = profile.quota_minutes_used + usedMinutes;
-    await serviceSupabase
-      .from('profiles')
-      .update({
-        quota_minutes_used: newUsed,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId);
+    // ─── 7. หัก Quota (ข้ามถ้า Unlimited) ─────────────
+    let newUsed = profile.quota_minutes_used;
+    if (!isUnlimited) {
+      newUsed = profile.quota_minutes_used + usedMinutes;
+      await serviceSupabase
+        .from('profiles')
+        .update({
+          quota_minutes_used: newUsed,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+    }
 
     // ─── 8. Save Project ──────────────────────────────
     const { data: project, error: projectError } = await serviceSupabase

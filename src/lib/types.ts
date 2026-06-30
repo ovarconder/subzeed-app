@@ -3,7 +3,7 @@
 // ============================================================
 
 // --- Subscription Tiers ---
-export type SubscriptionTier = 'free' | 'basic' | 'premium' | 'business_starter' | 'business_pro';
+export type SubscriptionTier = 'free' | 'basic' | 'premium' | 'business_starter' | 'business_pro' | 'unlimited';
 
 export interface TierConfig {
   name: string;
@@ -88,6 +88,20 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     positionAdjust: true,
     textAnimation: true,
     teamSeats: 5,
+    clientReview: true,
+    invoiceDownload: true,
+  },
+  unlimited: {
+    name: 'Unlimited',
+    price: 0,
+    quotaMinutes: 999999, // ไม่จำกัด
+    maxVideoMinutes: 999,   // ไม่จำกัด
+    watermark: false,
+    fonts: ['Kanit', 'Itim', 'Chonburi', 'Prompt', 'Sarabun', 'Mali', 'Noto Sans Thai'],
+    aiVocabulary: true,
+    positionAdjust: true,
+    textAnimation: true,
+    teamSeats: 999,
     clientReview: true,
     invoiceDownload: true,
   },

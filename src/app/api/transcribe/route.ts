@@ -64,9 +64,10 @@ export async function POST(request: NextRequest) {
     const estimatedDurationSeconds = audioFile.size / 32000;
     const estimatedMinutes = Math.ceil(estimatedDurationSeconds / 60);
 
-    // ─── 5. เช็ค Quota ────────────────────────────────
+    // ─── 5. เช็ค Quota (ข้ามถ้า Unlimited) ────────────
+    const isUnlimited = profile.tier === 'unlimited';
     const quotaLeft = profile.quota_minutes_total - profile.quota_minutes_used;
-    if (estimatedMinutes > quotaLeft) {
+    if (!isUnlimited && estimatedMinutes > quotaLeft) {
       return NextResponse.json(
         {
           error: `โควตาไม่เพียงพอ ต้องการ ${estimatedMinutes} นาที แต่คงเหลือ ${quotaLeft.toFixed(1)} นาที`,
@@ -118,33 +119,34 @@ export async function POST(request: NextRequest) {
     const segments = data.segments || [];
     const text = data.text || '';
 
-    // ─── 7. หัก Quota ─────────────────────────────────
-    const actualDuration = data.duration || estimatedDurationSeconds;
-    const usedMinutes = Math.ceil(actualDuration / 60);
+    // ─── 7. หัก Quota (ข้ามถ้า Unlimited) ─────────────
+    let newUsed = profile.quota_minutes_used;
+    if (!isUnlimited) {
+      const actualDuration = data.duration || estimatedDurationSeconds;
+      const usedMinutes = Math.ceil(actualDuration / 60);
+      newUsed = profile.quota_minutes_used + usedMinutes;
 
-    const newUsed = profile.quota_minutes_used + usedMinutes;
+      const { error: quotaError } = await serviceSupabase
+        .from('profiles')
+        .update({
+          quota_minutes_used: newUsed,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
 
-    const { error: quotaError } = await serviceSupabase
-      .from('profiles')
-      .update({
-        quota_minutes_used: newUsed,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId);
+      if (quotaError) {
+        console.error('[transcribe] Quota update error:', quotaError);
+      }
 
-    if (quotaError) {
-      console.error('[transcribe] Quota update error:', quotaError);
-      // ไม่ return error เพราะ transcription สำเร็จแล้ว
+      // ─── 8. บันทึก Quota Activity Log ─────────────────
+      await serviceSupabase.from('quota_activity_logs').insert({
+        user_id: userId,
+        log_type: 'stt_transcription',
+        minutes_changed: -usedMinutes,
+        quota_minutes_used_snapshot: newUsed,
+        description: `ถอดความ ${language === 'th' ? 'ภาษาไทย' : 'ภาษา'} ความยาว ${(data.duration || estimatedDurationSeconds).toFixed(1)} วินาที`,
+      });
     }
-
-    // ─── 8. บันทึก Quota Activity Log ───────────────────
-    await serviceSupabase.from('quota_activity_logs').insert({
-      user_id: userId,
-      log_type: 'stt_transcription',
-      minutes_changed: -usedMinutes,
-      quota_minutes_used_snapshot: newUsed,
-      description: `ถอดความ ${language === 'th' ? 'ภาษาไทย' : 'ภาษา'} ความยาว ${actualDuration.toFixed(1)} วินาที`,
-    });
 
     return NextResponse.json({
       segments,

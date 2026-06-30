@@ -130,14 +130,18 @@ function AdminContent() {
     try {
       const res = await fetch(api('/api/admin/users/update-tier'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user?.id || '',
+        },
         body: JSON.stringify({ userId, tier }),
       });
-      if (!res.ok) throw new Error('Update failed');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Update failed');
       addToast('อัปเดตแพ็กเกจสำเร็จ', 'success');
       fetchData();
-    } catch {
-      addToast('❌ อัปเดตไม่สำเร็จ', 'error');
+    } catch (err: any) {
+      addToast(`❌ ${err.message}`, 'error');
     }
   };
 

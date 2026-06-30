@@ -221,7 +221,10 @@ export async function renderVideoWithSubtitles(
 
   // 7. Read result
   onProgress?.(97);
-  const data = await ff.readFile(outName);
+  const readResult = await ff.readFile(outName);
+  const dataBytes: Uint8Array = typeof readResult === 'string'
+    ? new TextEncoder().encode(readResult)
+    : readResult;
 
   // Cleanup
   await ff.deleteFile(inName);
@@ -229,7 +232,7 @@ export async function renderVideoWithSubtitles(
   await ff.deleteFile('subs.ass');
 
   onProgress?.(99);
-  const blob = new Blob([data.buffer], { type: mimeOf(opts.format) });
+  const blob = new Blob([dataBytes], { type: mimeOf(opts.format) });
   onProgress?.(100);
   return blob;
 }

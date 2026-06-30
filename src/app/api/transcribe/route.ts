@@ -119,11 +119,13 @@ export async function POST(request: NextRequest) {
     const segments = data.segments || [];
     const text = data.text || '';
 
-    // ─── 7. หัก Quota (ข้ามถ้า Unlimited) ─────────────
+    // ─── 7. 計算 duration (ใช้ทั้งใน response และ quota) ─
+    const actualDuration = data.duration || estimatedDurationSeconds;
+    const usedMinutes = Math.ceil(actualDuration / 60);
+
+    // ─── 8. หัก Quota (ข้ามถ้า Unlimited) ─────────────
     let newUsed = profile.quota_minutes_used;
     if (!isUnlimited) {
-      const actualDuration = data.duration || estimatedDurationSeconds;
-      const usedMinutes = Math.ceil(actualDuration / 60);
       newUsed = profile.quota_minutes_used + usedMinutes;
 
       const { error: quotaError } = await serviceSupabase
@@ -138,13 +140,13 @@ export async function POST(request: NextRequest) {
         console.error('[transcribe] Quota update error:', quotaError);
       }
 
-      // ─── 8. บันทึก Quota Activity Log ─────────────────
+      // ─── 9. บันทึก Quota Activity Log ─────────────────
       await serviceSupabase.from('quota_activity_logs').insert({
         user_id: userId,
         log_type: 'stt_transcription',
         minutes_changed: -usedMinutes,
         quota_minutes_used_snapshot: newUsed,
-        description: `ถอดความ ${language === 'th' ? 'ภาษาไทย' : 'ภาษา'} ความยาว ${(data.duration || estimatedDurationSeconds).toFixed(1)} วินาที`,
+        description: `ถอดความ ${language === 'th' ? 'ภาษาไทย' : 'ภาษา'} ความยาว ${actualDuration.toFixed(1)} วินาที`,
       });
     }
 

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { TierBadge, QuotaBar } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toaster';
 import type { Profile } from '@/lib/types';
 
 interface Props {
@@ -12,8 +13,37 @@ interface Props {
 }
 
 export default function UsersTable({ users, onUpdateTier, onUnblock }: Props) {
+  const { addToast } = useToast();
   // ติดตามค่าที่กำลังเปลี่ยน (optimistic update)
   const [pendingTiers, setPendingTiers] = useState<Record<string, string>>({});
+  // ใช้ ref เก็บค่าเก่าเพื่อตรวจจับว่า users prop เปลี่ยนหลังจาก error
+  const prevUsersRef = useRef<Profile[]>(users);
+
+  // ─── detect เมื่อ users เปลี่ยน (หลัง fetchData) ─────
+  // ถ้า pendingTiers ยังมีค่าอยู่ แต่ users prop ถูกอัปเดตแล้ว
+  // แปลว่า API เกิด error → optimistic value ถูกดีดกลับ
+  useEffect(() => {
+    const prevUsers = prevUsersRef.current;
+    prevUsersRef.current = users;
+
+    if (Object.keys(pendingTiers).length === 0) return;
+
+    // loop ดูว่า user ไหนมี pending แต่ค่าจริงใน users ไม่ตรง
+    const reverted: string[] = [];
+    for (const userId of Object.keys(pendingTiers)) {
+      const user = users.find((u) => u.id === userId);
+      const prevUser = prevUsers.find((u) => u.id === userId);
+      if (user && prevUser && pendingTiers[userId] !== user.tier && pendingTiers[userId] === prevUser.tier) {
+        // API error — ค่าโดนดีดกลับ
+        reverted.push(user.email);
+      }
+    }
+
+    if (reverted.length > 0) {
+      addToast(`⚠️ ไม่สามารถเปลี่ยน tier ของ ${reverted.join(', ')} ได้ กรุณาลองใหม่อีกครั้ง`, 'error');
+      setPendingTiers({});
+    }
+  }, [users]);
 
   if (users.length === 0) {
     return <p className="py-8 text-center text-text-secondary">ไม่มีข้อมูล</p>;

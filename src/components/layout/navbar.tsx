@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { useRouter } from 'next/navigation';
 import { TIER_CONFIGS } from '@/lib/types';
@@ -13,11 +13,31 @@ export function Navbar() {
   const { config: siteConfig } = useSiteConfig();
   const router = useRouter();
   const [accountOpen, setAccountOpen] = useState(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openMenu = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    setAccountOpen(true);
+  };
+
+  const closeMenu = () => {
+    closeTimerRef.current = setTimeout(() => {
+      setAccountOpen(false);
+    }, 300); // delay 300ms ก่อนปิด
+  };
+
+  const toggleMenu = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    setAccountOpen(prev => !prev);
+  };
 
   const tierLabel = profile?.tier ? TIER_CONFIGS[profile.tier]?.name : 'Free';
-  const quotaLeft = profile
-    ? Math.max(0, profile.quota_minutes_total - profile.quota_minutes_used)
-    : 0;
+  const isUnlimited = profile?.tier === 'unlimited';
+  const quotaLeft = isUnlimited
+    ? Infinity
+    : profile
+      ? Math.max(0, (profile.quota_minutes_total ?? 0) - (profile.quota_minutes_used ?? 0))
+      : 0;
 
   return (
     <nav className="sticky top-0 z-40 w-full border-b border-[var(--sz-border)] bg-white/80 backdrop-blur-md" style={{ borderColor: 'var(--sz-border)' }}>
@@ -79,15 +99,19 @@ export function Navbar() {
                 style={{ backgroundColor: 'var(--sz-primary-light)', color: 'var(--sz-primary)' }}>
                 <span>{tierLabel}</span>
                 <span style={{ color: 'var(--sz-muted)' }}>|</span>
-                <span>{quotaLeft.toFixed(1)} นาที</span>
+                {isUnlimited ? (
+                  <span>♾️ ไม่จำกัด</span>
+                ) : (
+                  <span>{quotaLeft.toFixed(1)} นาที</span>
+                )}
               </div>
 
               <div className="relative"
-                onMouseEnter={() => setAccountOpen(true)}
-                onMouseLeave={() => setAccountOpen(false)}>
+                onMouseEnter={openMenu}
+                onMouseLeave={closeMenu}>
                 <button className="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
                   style={{ backgroundColor: 'var(--sz-surface)' }}
-                  onClick={() => setAccountOpen(prev => !prev)}>
+                  onClick={toggleMenu}>
                   <div className="h-6 w-6 rounded-full flex items-center justify-center text-white text-xs"
                     style={{ backgroundColor: 'var(--sz-primary)' }}>
                     {user.email?.charAt(0).toUpperCase()}
@@ -98,7 +122,9 @@ export function Navbar() {
                 </button>
                 {accountOpen && (
                   <div className="absolute right-0 mt-2 w-48 origin-top-right rounded-lg border shadow-lg bg-white py-1 z-50"
-                    style={{ borderColor: 'var(--sz-border)' }}>
+                    style={{ borderColor: 'var(--sz-border)' }}
+                    onMouseEnter={openMenu}
+                    onMouseLeave={closeMenu}>
                     <Link href="/dashboard" className="block px-4 py-2 text-sm hover:bg-surface"
                       style={{ color: 'var(--sz-text)' }}>
                       Dashboard

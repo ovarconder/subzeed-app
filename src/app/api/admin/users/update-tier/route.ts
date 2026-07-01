@@ -11,12 +11,19 @@ import { verifyAdmin } from '@/lib/admin-auth';
  */
 export async function POST(request: NextRequest) {
   try {
-    await verifyAdmin(request);
+    const userId = await verifyAdmin(request);
     const adminSupabase = createServiceSupabase();
 
     // ─── Validate ─────────────────────────────────────
-    const { userId, tier } = await request.json();
-    if (!userId || !tier) {
+    let body: { userId?: string; tier?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    const { userId: targetUserId, tier } = body;
+    if (!targetUserId || !tier) {
       return NextResponse.json({ error: 'Missing userId or tier' }, { status: 400 });
     }
 
@@ -52,16 +59,17 @@ export async function POST(request: NextRequest) {
     const { error } = await adminSupabase
       .from('profiles')
       .update(updateData)
-      .eq('id', userId);
+      .eq('id', targetUserId);
 
     if (error) {
-      console.error('[admin/update-tier] Error:', error);
-      return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+      console.error('[admin/update-tier] Error:', JSON.stringify(error));
+      return NextResponse.json({ error: `Update failed: ${error.message}` }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error';
+    console.error('[admin/update-tier] Unhandled:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

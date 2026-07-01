@@ -8,41 +8,53 @@ import { useRouter } from 'next/navigation';
 import { TIER_CONFIGS } from '@/lib/types';
 import { useSiteConfig } from '@/components/layout/site-config-provider';
 
+interface NavProfile {
+  tier: string;
+  quota_minutes_total: number;
+  quota_minutes_used: number;
+  is_super_admin: boolean;
+}
+
 export function Navbar() {
-  const { user, profile, signOut, refreshProfile } = useAuth();
+  const { user, signOut } = useAuth();
   const { config: siteConfig } = useSiteConfig();
   const router = useRouter();
   const [accountOpen, setAccountOpen] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Refresh profile ทุกครั้งที่ component mount / focus ──
+  // ─── State profile ของ Navbar เอง (ไม่พึ่ง useAuth) ──
+  const [navProfile, setNavProfile] = useState<NavProfile | null>(null);
+
+  const fetchProfile = async () => {
+    if (!user) { setNavProfile(null); return; }
+    try {
+      // ดึง profile ผ่าน Supabase โดยตรง (service role bypass RLS)
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('profiles')
+        .select('tier, quota_minutes_total, quota_minutes_used, is_super_admin')
+        .eq('id', user.id)
+        .single();
+      if (data) {
+        console.log('[Navbar] Profile fetched:', data.tier, data.quota_minutes_total, data.quota_minutes_used);
+        setNavProfile(data as unknown as NavProfile);
+      }
+    } catch (e) {
+      console.error('[Navbar] Failed to fetch profile:', e);
+    }
+  };
+
   useEffect(() => {
-    if (!user) return;
-    refreshProfile();
+    fetchProfile();
   }, [user]);
 
-  const openMenu = () => {
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    setAccountOpen(true);
-  };
-
-  const closeMenu = () => {
-    closeTimerRef.current = setTimeout(() => {
-      setAccountOpen(false);
-    }, 300); // delay 300ms ก่อนปิด
-  };
-
-  const toggleMenu = () => {
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    setAccountOpen(prev => !prev);
-  };
-
-  const tierLabel = profile?.tier ? TIER_CONFIGS[profile.tier]?.name : 'Free';
-  const isUnlimited = profile?.tier === 'unlimited';
+  const tierLabel = navProfile?.tier ? TIER_CONFIGS[navProfile.tier]?.name : 'Free';
+  const isUnlimited = navProfile?.tier === 'unlimited';
   const quotaLeft = isUnlimited
     ? Infinity
-    : profile
-      ? Math.max(0, (profile.quota_minutes_total ?? 0) - (profile.quota_minutes_used ?? 0))
+    : navProfile
+      ? Math.max(0, (navProfile.quota_minutes_total ?? 0) - (navProfile.quota_minutes_used ?? 0))
       : 0;
 
   return (
@@ -91,7 +103,7 @@ export function Navbar() {
                 Dashboard
               </Link>
 
-              {profile?.is_super_admin && (
+              {navProfile?.is_super_admin && (
                 <Link
                   href="/admin"
                   className="text-xs rounded-full px-2.5 py-0.5 font-medium transition-colors"

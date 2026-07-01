@@ -204,39 +204,19 @@ export function SubtitleItem({
        />
      ) : (
        <div
-         className="line-clamp-2 cursor-text hover:bg-white/50 rounded px-1 -mx-1 py-0.5"
+         className="line-clamp-2 cursor-text hover:bg-white/50 rounded px-1 -mx-1 py-0.5 text-text-primary"
          onClick={handleStartEdit}
          title="คลิกเพื่อแก้ไขข้อความ"
        >
-         {/* แสดง segments แต่ละอันด้วยสีของมัน */}
-         {segments.map((seg, i) => {
-           const isBold = seg.style.fontWeight === 'bold' || seg.style.fontWeight === 'bold-italic';
-           const isItalic = seg.style.fontWeight === 'italic' || seg.style.fontWeight === 'bold-italic';
-           return (
-             <span
-               key={seg.id || i}
-               style={{
-                 color: seg.style.color,
-                 opacity: seg.style.opacity,
-                 fontWeight: isBold ? 'bold' : 'normal',
-                 fontStyle: isItalic ? 'italic' : 'normal',
-                 textShadow: seg.style.shadowOpacity > 0
-                   ? `${seg.style.shadowOffsetX}px ${seg.style.shadowOffsetY}px ${seg.style.shadowBlur}px ${seg.style.shadowColor}`
-                   : 'none',
-               }}
-             >
-               {seg.text}
-             </span>
-           );
-         })}
+         {sub.text}
        </div>
      )}
 
      {/* แสดงไอคอนบอกว่ามีหลายสี */}
-     {!editing && segments.length > 1 && (
+     {!editing && sub.segments && sub.segments.length > 1 && (
        <div className="text-[9px] text-text-secondary/60 mt-0.5 flex items-center gap-1">
          <span>🎨</span>
-         <span>{segments.length} ส่วน</span>
+         <span>{sub.segments.length} ส่วน</span>
        </div>
      )}
 

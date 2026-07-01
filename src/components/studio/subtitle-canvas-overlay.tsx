@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import type { SubtitleEntry, TextSegment, TextSegmentStyle, SubscriptionTier } from '@/lib/types';
+import type { SubtitleEntry, TextSegment, TextSegmentStyle, SubtitleDisplayStyle, SubscriptionTier } from '@/lib/types';
 import { TIER_CONFIGS, DEFAULT_SEGMENT_STYLE } from '@/lib/types';
 import { useSubtitleStore } from '@/lib/store/subtitle-store';
 
@@ -107,7 +107,8 @@ export function SubtitleCanvasOverlay({
           ? activeSub.segments
           : [{ id: `${activeSub.id}-seg-0`, text: activeSub.text, style: { ...DEFAULT_SEGMENT_STYLE } }];
 
-        drawSegments(ctx, segs, actualW, actualH, fontFamily, fontSize, activeSub.y_offset ?? 90, activeSub.position ?? 'bottom');
+        const ds = activeSub.displayStyle;
+        drawSegments(ctx, segs, actualW, actualH, fontFamily, fontSize, activeSub.y_offset ?? 90, activeSub.position ?? 'bottom', ds);
       }
 
       if (showWatermark) {
@@ -139,8 +140,9 @@ function drawSegments(
   fontSize: number,
   yOffset: number,
   position: 'bottom' | 'top' | 'middle',
+  displayStyle?: SubtitleDisplayStyle,
 ) {
-  // ─── Calculate total width for centering ──────────────
+  // ─── คำนวณความกว้างของข้อความ ─────────────────────────
   let totalWidth = 0;
   const metrics: { width: number; style: TextSegmentStyle; text: string }[] = [];
 
@@ -152,17 +154,21 @@ function drawSegments(
     totalWidth += m.width;
   }
 
-  // ─── Calculate padding & background ───────────────────
-  const paddingX = fontSize * 0.5;
-  const paddingY = fontSize * 0.3;
+  // ─── ใช้ค่าจาก displayStyle หรือค่าเริ่มต้น ──────────
+  const paddingX = displayStyle?.paddingX ?? fontSize * 0.5;
+  const paddingY = displayStyle?.paddingY ?? fontSize * 0.3;
+  const borderRadius = displayStyle?.borderRadius ?? fontSize * 0.3;
+  const bgColor = displayStyle?.bgColor ?? '#000000';
+  const bgOpacity = displayStyle?.bgOpacity ?? 0.6;
+  const bs = displayStyle?.boxShadow;
+  const hasBoxShadow = bs && bs.opacity > 0 && (bs.blur > 0 || bs.offsetX !== 0 || bs.offsetY !== 0);
+
   const bgWidth = totalWidth + paddingX * 2;
   const bgHeight = fontSize * 1.4 + paddingY * 2;
-  const borderRadius = fontSize * 0.3;
 
-  // ─── Position ─────────────────────────────────────────
+  // ─── ตำแหน่ง ───────────────────────────────────────────
   const centerX = actualW / 2;
   let boxY: number;
-
   switch (position) {
     case 'top':
       boxY = actualH * (yOffset / 100) || 10;
@@ -178,21 +184,40 @@ function drawSegments(
 
   const boxX = centerX - bgWidth / 2;
 
-  // ─── Draw background box ──────────────────────────────
+  // ─── Box Shadow (เงากล่อง) ─────────────────────────────
   ctx.save();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-  ctx.beginPath();
-  roundRect(ctx, boxX - 4, boxY - 4, bgWidth + 8, bgHeight + 8, borderRadius + 2);
-  ctx.fill();
+  if (hasBoxShadow) {
+    ctx.save();
+    ctx.shadowColor = bs!.color;
+    ctx.shadowBlur = bs!.blur;
+    ctx.shadowOffsetX = bs!.offsetX;
+    ctx.shadowOffsetY = bs!.offsetY;
+    ctx.globalAlpha = bs!.opacity;
 
-  // ─── Draw each segment ────────────────────────────────
+    // วาดพื้นหลังจาง ๆ เพื่อให้ shadow แสดง
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    ctx.beginPath();
+    roundRect(ctx, boxX, boxY, bgWidth, bgHeight, borderRadius);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ─── Background Box ─────────────────────────────────────
+  ctx.save();
+  ctx.fillStyle = hexToRgba(bgColor, bgOpacity);
+  ctx.beginPath();
+  roundRect(ctx, boxX, boxY, bgWidth, bgHeight, borderRadius);
+  ctx.fill();
+  ctx.restore();
+
+  // ─── ข้อความแต่ละ segment ─────────────────────────────
   let cursorX = centerX - totalWidth / 2;
   const textY = boxY + bgHeight / 2 + fontSize * 0.4;
 
   for (const m of metrics) {
     const st = m.style;
 
-    // ─── Shadow (draw behind text) ──────────────────────
+    // Shadow ของตัวอักษร
     if (st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
       ctx.save();
       ctx.globalAlpha = st.shadowOpacity;
@@ -208,7 +233,7 @@ function drawSegments(
       ctx.restore();
     }
 
-    // ─── Stroke (outline) ───────────────────────────────
+    // Stroke (ขอบตัวอักษร)
     if (st.strokeWidth > 0 && st.strokeOpacity > 0) {
       ctx.save();
       ctx.globalAlpha = st.strokeOpacity;
@@ -223,7 +248,7 @@ function drawSegments(
       ctx.restore();
     }
 
-    // ─── Fill (text color) ──────────────────────────────
+    // Fill (สีตัวอักษร)
     ctx.save();
     ctx.globalAlpha = st.opacity;
     ctx.font = buildFontString(st.fontWeight, fontSize, fontFamily);
@@ -236,7 +261,20 @@ function drawSegments(
     cursorX += m.width;
   }
 
-  ctx.restore();
+  ctx.restore(); // pop from top-level ctx.save()
+}
+
+// ─── Hex Color → rgba string ─────────────────────────────
+
+function hexToRgba(hex: string, alpha: number): string {
+  let c = hex.replace('#', '');
+  if (c.length === 3) {
+    c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+  }
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 // ─── Watermark ─────────────────────────────────────────────

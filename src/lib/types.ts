@@ -179,6 +179,50 @@ export function textToSegments(id: string, text: string): TextSegment[] {
   }];
 }
 
+// ============================================================
+// 🎬 SUBTITLE DISPLAY STYLE — Background, Padding, Shadow ของซับบนวิดีโอ
+// ============================================================
+
+/** รูปแบบการแสดงผลของซับไตเติลบนวิดีโอ (ทั้งบรรทัด) */
+export interface SubtitleDisplayStyle {
+  /** ความทึบของพื้นหลัง 0-1 (0 = โปร่งใส ไม่มี BG) */
+  bgOpacity: number;
+  /** สีพื้นหลัง (hex) */
+  bgColor: string;
+  /** รัศมีมุมโค้ง (px) */
+  borderRadius: number;
+  /** Padding แนวตั้ง (px) */
+  paddingY: number;
+  /** Padding แนวนอน (px) */
+  paddingX: number;
+  /** เงาของกล่อง subtitle (offsetX, offsetY, blur, color, opacity) */
+  boxShadow: {
+    offsetX: number;
+    offsetY: number;
+    blur: number;
+    spread: number;
+    color: string;
+    opacity: number;
+  };
+}
+
+/** ค่าเริ่มต้นของ SubtitleDisplayStyle */
+export const DEFAULT_DISPLAY_STYLE: SubtitleDisplayStyle = {
+  bgOpacity: 0.6,
+  bgColor: '#000000',
+  borderRadius: 6,
+  paddingY: 6,
+  paddingX: 12,
+  boxShadow: {
+    offsetX: 0,
+    offsetY: 0,
+    blur: 0,
+    spread: 0,
+    color: '#000000',
+    opacity: 0,
+  },
+};
+
 // --- Subtitle Entry (ขยาย) ---
 export interface SubtitleEntry {
   id: string;
@@ -188,6 +232,8 @@ export interface SubtitleEntry {
   segments: TextSegment[]; // NEW: รองรับหลายสีหลายสไตล์
   position: 'bottom' | 'top' | 'middle';
   y_offset: number; // 0-100 percent
+  /** รูปแบบการแสดงผลของซับนี้ (ถ้าไม่ระบุ ใช้ค่าเริ่มต้นของโปรเจกต์) */
+  displayStyle?: SubtitleDisplayStyle;
 }
 
 // --- Project ---

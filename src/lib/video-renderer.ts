@@ -36,6 +36,9 @@ export interface RenderOptions {
   gifMaxWidth: number;
   /** สำหรับ GIF: จำนวน frame ที่จะข้าม (0 = ทุก frame, 1 = ข้าม 1 frame = fps ครึ่ง) */
   gifFrameSkip: number;
+  /** ตัดวิดีโอเฉพาะช่วง (trim) — เป็นวินาที */
+  trimStart?: number;
+  trimEnd?: number;
 }
 
 const DEFAULT_RENDER_OPTIONS: RenderOptions = {
@@ -253,14 +256,20 @@ export async function renderVideoWithSubtitles(
 
 /** แยก render video ออกมาให้อ่านง่ายขึ้น */
 async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: RenderOptions) {
-  const args = [
-    '-i', inName,
-    '-vf', `subtitles=subs.ass`,
-    ...codecArgs(opts.format, opts.quality, opts.useHardwareAccel),
-    '-c:a', 'aac', '-b:a', '128k',
-    '-movflags', '+faststart',
-    '-y', outName,
-  ];
+  const args: string[] = [];
+  // trim options ก่อน -i
+  if (opts.trimStart !== undefined && opts.trimStart > 0) {
+    args.push('-ss', String(opts.trimStart));
+  }
+  if (opts.trimEnd !== undefined && opts.trimEnd > opts.trimStart!) {
+    args.push('-to', String(opts.trimEnd));
+  }
+  args.push('-i', inName);
+  args.push('-vf', 'subtitles=subs.ass');
+  args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel));
+  args.push('-c:a', 'aac', '-b:a', '128k');
+  args.push('-movflags', '+faststart');
+  args.push('-y', outName);
   await ff.exec(args);
 }
 
@@ -269,23 +278,30 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
   const paletteName = 'palette.png';
   const fps = Math.max(5, Math.round(opts.fps / (opts.gifFrameSkip + 1)));
   const scale = `scale=${opts.gifMaxWidth}:-1:flags=lanczos`;
+  const trimFilter = (opts.trimStart !== undefined || opts.trimEnd !== undefined)
+    ? `trim=${opts.trimStart ?? 0}:${opts.trimEnd ?? 9999},setpts=PTS-STARTPTS,`
+    : '';
 
   try {
     // Step 1: palette
-    await ff.exec([
-      '-i', inName,
-      '-vf', `${scale},subtitles=subs.ass,palettegen=stats_mode=diff`,
-      '-y', paletteName,
-    ]);
+    const paletteArgs: string[] = [];
+    if (opts.trimStart !== undefined && opts.trimStart > 0) paletteArgs.push('-ss', String(opts.trimStart));
+    if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) paletteArgs.push('-to', String(opts.trimEnd));
+    paletteArgs.push('-i', inName);
+    paletteArgs.push('-vf', `${trimFilter}${scale},subtitles=subs.ass,palettegen=stats_mode=diff`);
+    paletteArgs.push('-y', paletteName);
+    await ff.exec(paletteArgs);
 
     // Step 2: GIF from palette
-    await ff.exec([
-      '-i', inName,
-      '-i', paletteName,
-      '-lavfi', `${scale},subtitles=subs.ass [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5`,
-      '-r', String(fps),
-      '-y', outName,
-    ]);
+    const gifArgs: string[] = [];
+    if (opts.trimStart !== undefined && opts.trimStart > 0) gifArgs.push('-ss', String(opts.trimStart));
+    if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) gifArgs.push('-to', String(opts.trimEnd));
+    gifArgs.push('-i', inName);
+    gifArgs.push('-i', paletteName);
+    gifArgs.push('-lavfi', `${trimFilter}${scale},subtitles=subs.ass [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5`);
+    gifArgs.push('-r', String(fps));
+    gifArgs.push('-y', outName);
+    await ff.exec(gifArgs);
   } finally {
     await ff.deleteFile(paletteName).catch(() => {});
   }

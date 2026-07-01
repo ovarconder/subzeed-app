@@ -57,6 +57,22 @@ export function Navbar() {
       ? Math.max(0, (navProfile.quota_minutes_total ?? 0) - (navProfile.quota_minutes_used ?? 0))
       : 0;
 
+  const openMenu = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    setAccountOpen(true);
+  };
+
+  const closeMenu = () => {
+    closeTimerRef.current = setTimeout(() => {
+      setAccountOpen(false);
+    }, 300);
+  };
+
+  const toggleMenu = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    setAccountOpen(prev => !prev);
+  };
+
   return (
     <nav className="sticky top-0 z-40 w-full border-b border-[var(--sz-border)] bg-white/80 backdrop-blur-md" style={{ borderColor: 'var(--sz-border)' }}>
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">

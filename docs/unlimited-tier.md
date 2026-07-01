@@ -148,4 +148,93 @@ if (!isUnlimited) {
 
 ---
 
-_อัปเดตล่าสุด: กุมภาพันธ์ 2568 — Unlimited Tier_
+## ⚠️ ปัญหาที่เจอและแนวทางแก้ไข (Troubleshooting)
+
+### 1. quotaLeft = 0 ทำให้ unlimited ใช้งานต่อไม่ได้
+
+**สาเหตุ:**
+ตอนที่ admin เปลี่ยน tier เป็น `unlimited` ผ่าน API `update-tier` — ระบบ set `quota_minutes_total = 999999` และ `quota_minutes_used = 0` แต่ค่าใน `profile` ที่ client ได้รับอาจเป็น `null` หรือ `undefined` ทำให้คำนวณ `quotaLeft = 0 - 0 = 0`
+
+**วิธีแก้ไขใน code (client-side):**
+```typescript
+// studio/page.tsx
+const isUnlimited = profile?.tier === 'unlimited';
+const quotaLeft = isUnlimited 
+  ? Infinity                     // ♾️ ไม่จำกัด — ข้าม quota check ตลอด
+  : (profile ? profile.quota_minutes_total - profile.quota_minutes_used : 0);
+```
+
+**หลักการ:**
+- ถ้า `isUnlimited === true` → **ไม่ต้องสน quota** ตั้งเป็น `Infinity` เพื่อให้ `estimatedMinutes > quotaLeft` เป็น `false` เสมอ (เช็คทุกอันผ่าน)
+- ถ้า `isUnlimited === false` → คำนวณ quota ปกติ
+
+**ทุกที่ที่เช็ค quota ต้อง guard ด้วย `isUnlimited`:**
+```typescript
+// เช็คความยาววิดีโอสูงสุด
+const maxDur = isUnlimited ? Infinity : tierConfig.maxVideoMinutes * 60;
+
+// เช็คโควตาก่อน transcribe
+if (!isUnlimited && estimatedMinutes > quotaLeft) {
+  addToast('โควตาไม่พอ', 'error');
+  return;
+}
+```
+
+---
+
+### 2. Enum `subscription_tier` ใน DB ไม่มีค่า `'unlimited'`
+
+**สาเหตุ:**
+Supabase enum type `subscription_tier` มีแค่ `'free'`, `'basic'`, `'premium'`, `'business_starter'`, `'business_pro'` — เมื่อ API พยายาม `UPDATE profiles SET tier = 'unlimited'` จะ error:
+```
+invalid input value for enum subscription_tier: "unlimited"
+```
+
+**วิธีแก้:**
+รัน SQL ใน Supabase SQL Editor:
+```sql
+ALTER TYPE subscription_tier ADD VALUE IF NOT EXISTS 'unlimited';
+```
+> ไฟล์ migration: `supabase/add-unlimited-tier.sql`
+
+---
+
+### 3. อ่าน `quota_minutes_total` / `quota_minutes_used` แล้วเป็น `null`
+
+**สาเหตุ:**
+profile ใน DB อาจมีค่า `NULL` ในคอลัมน์ `quota_minutes_total` หรือ `quota_minutes_used` โดยเฉพาะ user ที่สมัครก่อนมีระบบ quota
+
+**วิธีแก้ใน API route:**
+```typescript
+const quotaTotal = profile.quota_minutes_total ?? TIER_CONFIGS[profile.tier].quotaMinutes;
+const quotaUsed = profile.quota_minutes_used ?? 0;
+```
+
+---
+
+### 4. Dropdown เลือกค่าไม่ได้ (UI ติดที่ค่าเดิม)
+
+**สาเหตุ:**
+`<select value={u.tier}>` ใช้ค่าจาก props โดยตรง — React ผูก `value` ไว้ ทำให้ไม่สามารถเปลี่ยนได้ถ้า `u.tier` ไม่เปลี่ยน
+
+**วิธีแก้:**
+ใช้ optimistic update — เก็บ `pendingTiers` state ไว้ใน component
+```typescript
+const [pendingTiers, setPendingTiers] = useState<Record<string, string>>({});
+
+const getTier = (u: Profile) => pendingTiers[u.id] ?? u.tier;
+
+return (
+  <select value={getTier(u)} onChange={(e) => {
+    setPendingTiers(prev => ({ ...prev, [u.id]: e.target.value }));
+    onUpdateTier(u.id, e.target.value);
+  }}>
+    ...
+  </select>
+);
+```
+ดูไฟล์ `src/components/admin/UsersTable.tsx` สำหรับ implementation เต็ม
+
+---
+
+_อัปเดตล่าสุด: กุมภาพันธ์ 2568 — Unlimited Tier + Troubleshooting_

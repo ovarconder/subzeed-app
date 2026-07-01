@@ -111,13 +111,13 @@ export default function StudioPage() {
 
   // Check quota
   const tierConfig = profile ? TIER_CONFIGS[profile.tier] : TIER_CONFIGS.free;
-  const quotaLeft = profile ? profile.quota_minutes_total - profile.quota_minutes_used : 0;
   const isFree = profile?.tier === 'free';
   const isPremiumOrUp = profile?.tier === 'premium' || profile?.tier === 'business_starter' || profile?.tier === 'business_pro' || profile?.tier === 'unlimited';
   // ตรวจสอบว่า tier นี้มีสิทธิ์ใช้ AI Smart (Translation) หรือไม่
   const hasAiSmart = profile ? TIER_CONFIGS[profile.tier]?.aiVocabulary : false;
   const hasAiVocab = profile ? TIER_CONFIGS[profile.tier]?.aiVocabulary : false;
   const isUnlimited = profile?.tier === 'unlimited';
+  const quotaLeft = isUnlimited ? Infinity : (profile ? profile.quota_minutes_total - profile.quota_minutes_used : 0);
 
   // ---- Video Handling ----
   const handleFileSelect = useCallback((file: File) => {
@@ -132,7 +132,7 @@ export default function StudioPage() {
     tempVideo.preload = 'metadata';
     tempVideo.onloadedmetadata = async () => {
       const dur = tempVideo.duration;
-      const maxDur = tierConfig.maxVideoMinutes * 60;
+      const maxDur = isUnlimited ? Infinity : tierConfig.maxVideoMinutes * 60;
       if (dur > maxDur) {
         addToast(`วิดีโอความยาวสูงสุด ${tierConfig.maxVideoMinutes} นาที สำหรับแพ็กเกจ ${tierConfig.name}`, 'error');
         URL.revokeObjectURL(tempVideo.src);
@@ -187,7 +187,7 @@ export default function StudioPage() {
 
     const estimatedMinutes = Math.ceil(videoDuration / 60);
     if (!isUnlimited && estimatedMinutes > quotaLeft) {
-      addToast(`โควตาไม่เพียงพอ ต้องการ ${estimatedMinutes} นาที แต่มี ${quotaLeft.toFixed(1)} นาที`, 'error');
+      addToast(`โควตาไม่เพียงพอ ต้องการ ${estimatedMinutes} นาที แต่มี ${quotaLeft === Infinity ? 'ไม่จำกัด' : quotaLeft.toFixed(1)} นาที`, 'error');
       return;
     }
 

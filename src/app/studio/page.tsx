@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/layout/navbar';
 import { Button } from '@/components/ui/button';
 import { SubtitleItem } from '@/components/studio/subtitle-item';
-import { SubtitleOverlay } from '@/components/studio/subtitle-overlay';
 import { SubtitleSettingsBar } from '@/components/studio/subtitle-settings-bar';
 import { renderVideoWithSubtitles, downloadVideoBlob, EXPORT_FORMATS, QUALITY_PRESETS, supportsHardwareAccel } from '@/lib/video-renderer';
 import type { ExportFormat, QualityPreset } from '@/lib/video-renderer';
@@ -255,14 +254,48 @@ export default function StudioPage() {
       }
 
       // 3. อัปเดต store
-      const newSubtitles: SubtitleEntry[] = data.subtitles.map((seg: any) => ({
-        id: seg.id,
-        start: seg.start,
-        end: seg.end,
-        text: seg.text,
-        position: seg.position || 'bottom',
-        y_offset: seg.y_offset ?? 90,
-      }));
+      const newSubtitles: SubtitleEntry[] = data.subtitles.map((seg: any) => {
+        const id = seg.id;
+        // ถ้า backend ส่ง segments มาแล้วใช้เลย ถ้าไม่ก็สร้างใหม่
+        if (seg.segments && seg.segments.length > 0) {
+          return {
+            id,
+            start: seg.start,
+            end: seg.end,
+            text: seg.text,
+            segments: seg.segments,
+            position: seg.position || 'bottom',
+            y_offset: seg.y_offset ?? 90,
+          };
+        }
+        // Fallback: สร้าง segments ปกติ
+        return {
+          id,
+          start: seg.start,
+          end: seg.end,
+          text: seg.text,
+          segments: [{
+            id: `${id}-seg-0`,
+            text: seg.text,
+            style: {
+              color: '#FFFFFF',
+              opacity: 1,
+              strokeColor: '#000000',
+              strokeWidth: 2,
+              strokeOpacity: 1,
+              shadowColor: '#000000',
+              shadowOpacity: 0.5,
+              shadowOffsetX: 0,
+              shadowOffsetY: 2,
+              shadowBlur: 4,
+              shadowAngle: 0,
+              fontWeight: 'normal' as const,
+            },
+          }],
+          position: seg.position || 'bottom',
+          y_offset: seg.y_offset ?? 90,
+        };
+      });
 
       store.setSubtitles(newSubtitles);
       store.setCurrentProject({
@@ -378,11 +411,31 @@ export default function StudioPage() {
   // ---- Subtitle CRUD ----
   const addSubtitle = () => {
     const ct = videoRef.current?.currentTime || 0;
+    const id = `sub-${uid()}`;
+    const text = subtitleText || '...';
     const newSub: SubtitleEntry = {
-      id: `sub-${uid()}`,
+      id,
       start: Math.round(ct * 10) / 10,
       end: Math.round((ct + 3) * 10) / 10,
-      text: subtitleText || '...',
+      text,
+      segments: [{
+        id: `${id}-seg-0`,
+        text,
+        style: {
+          color: '#FFFFFF',
+          opacity: 1,
+          strokeColor: '#000000',
+          strokeWidth: 2,
+          strokeOpacity: 1,
+          shadowColor: '#000000',
+          shadowOpacity: 0.5,
+          shadowOffsetX: 0,
+          shadowOffsetY: 2,
+          shadowBlur: 4,
+          shadowAngle: 0,
+          fontWeight: 'normal' as const,
+        },
+      }],
       position: 'bottom',
       y_offset: 90,
     };

@@ -10,10 +10,13 @@ import { useSubtitleStore } from '@/lib/store/subtitle-store';
 import { useToast } from '@/components/ui/toaster';
 import { SubtitleItem } from '@/components/studio/subtitle-item';
 import { SubtitleSettingsBar } from '@/components/studio/subtitle-settings-bar';
+import { SubtitleCanvasOverlay } from '@/components/studio/subtitle-canvas-overlay';
+import { SegmentStyleEditor } from '@/components/studio/segment-style-editor';
 import { renderVideoWithSubtitles, downloadVideoBlob, EXPORT_FORMATS, QUALITY_PRESETS, supportsHardwareAccel } from '@/lib/video-renderer';
 import type { ExportFormat, QualityPreset } from '@/lib/video-renderer';
 import { loadVideoLocally } from '@/lib/local-video-storage';
-import type { Project } from '@/lib/types';
+import type { Project, SubtitleEntry, TextSegment } from '@/lib/types';
+import { textToSegments } from '@/lib/types';
 
 export default function StudioEditPage() {
   const params = useParams();
@@ -32,9 +35,14 @@ export default function StudioEditPage() {
   const [exportQuality, setExportQuality] = useState<QualityPreset>('high');
   const [useHardwareAccel, setUseHardwareAccel] = useState(supportsHardwareAccel());
   const [gifMaxWidth, setGifMaxWidth] = useState(480);
+  const [showStyleEditor, setShowStyleEditor] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const vttUrlRef = useRef<string | null>(null);
+
+  // ─── หา subtitle ที่กำลังเลือก ─────────────────────
+  const selectedSub = store.subtitles.find(s => s.id === store.selectedSubtitleId) ?? null;
 
   // ─── โหลด Project + วิดีโอจาก IndexedDB ─────────────
   useEffect(() => {
@@ -52,6 +60,15 @@ export default function StudioEditPage() {
         return;
       }
 
+      // แปลง subtitle ที่มีอยู่ให้มี segments (backward compat)
+      const migratedSubtitles = (result.data.subtitles || []).map((sub: any) => {
+        if (!sub.segments || sub.segments.length === 0) {
+          return { ...sub, segments: textToSegments(sub.id, sub.text) };
+        }
+        return sub;
+      });
+      result.data.subtitles = migratedSubtitles;
+
       store.setCurrentProject(result.data);
 
       // โหลดวิดีโอจาก IndexedDB
@@ -66,34 +83,23 @@ export default function StudioEditPage() {
         console.warn('[StudioEdit] No local video found for:', params.id);
       }
 
-      // VTT track
-      if (result.data.subtitles.length > 0) {
-        const vtt = genVtt(result.data.subtitles);
-        const blob = new Blob([vtt], { type: 'text/vtt' });
-        const url = URL.createObjectURL(blob);
-        vttUrlRef.current = url;
-        setTimeout(() => injectTrack(videoRef.current, url), 500);
-      }
-
       setLoading(false);
     };
     fetchProject();
   }, [params.id]);
 
-  // ─── Refresh VTT ─────────────────────────────────────
-  const refreshVttTrack = useCallback(() => {
-    const subs = store.subtitles;
-    if (subs.length === 0) {
-      if (vttUrlRef.current) { URL.revokeObjectURL(vttUrlRef.current); vttUrlRef.current = null; }
-      return;
-    }
-    const vtt = genVtt(subs);
-    const blob = new Blob([vtt], { type: 'text/vtt' });
-    const url = URL.createObjectURL(blob);
-    if (vttUrlRef.current) URL.revokeObjectURL(vttUrlRef.current);
-    vttUrlRef.current = url;
-    injectTrack(videoRef.current, url);
-  }, [store.subtitles]);
+  // ─── Sync video time with store ──────────────────────
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleTimeUpdate = () => {
+      store.setCurrentTime(video.currentTime);
+    };
+
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    return () => video.removeEventListener('timeupdate', handleTimeUpdate);
+  }, []);
 
   // ─── Export Video ────────────────────────────────────
   const handleExportVideo = async () => {
@@ -142,28 +148,12 @@ export default function StudioEditPage() {
     addToast(error ? 'บันทึกไม่สำเร็จ' : 'บันทึกสำเร็จ ✅', error ? 'error' : 'success');
   };
 
-  // ─── Helper functions ────────────────────────────────
-  function genVtt(subs: any[]): string {
-    const f = (s: number) => {
-      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(Math.floor(sec)).padStart(2, '0')}.${String(Math.round((sec % 1) * 1000)).padStart(3, '0')}`;
-    };
-    return 'WEBVTT\n\n' + subs.map((sub: any, i: number) => `${i + 1}\n${f(sub.start)} --> ${f(sub.end)}\n${sub.text}`).join('\n\n');
-  }
-
-  function injectTrack(video: HTMLVideoElement | null, url: string) {
-    if (!video) return;
-    video.querySelectorAll('track').forEach(t => { if (t.src) URL.revokeObjectURL(t.src); t.remove(); });
-    const track = document.createElement('track');
-    track.kind = 'subtitles'; track.src = url; track.srclang = 'th'; track.label = 'ไทย'; track.default = true;
-    video.appendChild(track);
-    track.addEventListener('load', () => { if (track.track) track.track.mode = 'showing'; });
-  }
-
-  // Cleanup
-  useEffect(() => {
-    return () => { if (vttUrlRef.current) URL.revokeObjectURL(vttUrlRef.current); };
-  }, []);
+  // ─── Handle segment change ─────────────────────────
+  const handleSegmentsChange = (segments: TextSegment[]) => {
+    if (!selectedSub) return;
+    const text = segments.map(s => s.text).join('');
+    store.updateSubtitle(selectedSub.id, { segments, text });
+  };
 
   if (loading) {
     return (
@@ -175,10 +165,6 @@ export default function StudioEditPage() {
       </>
     );
   }
-
-  const currentSub = store.subtitles.find(
-    (s) => store.currentTime >= s.start && store.currentTime <= s.end
-  );
 
   return (
     <>
@@ -203,14 +189,28 @@ export default function StudioEditPage() {
             />
           )}
 
-          <div className="flex-1 bg-black flex items-center justify-center">
+          <div className="flex-1 bg-black flex items-center justify-center relative">
             {store.videoUrl ? (
-              <video
-                ref={videoRef}
-                src={store.videoUrl}
-                controls
-                className="max-w-full max-h-full"
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  src={store.videoUrl}
+                  controls
+                  className="max-w-full max-h-full"
+                />
+                {/* Canvas Overlay for styled subtitles */}
+                <canvas
+                  ref={canvasRef}
+                  className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                />
+                <SubtitleCanvasOverlay
+                  videoRef={videoRef}
+                  canvasRef={canvasRef}
+                  fontFamily={selectedFontFamily}
+                  fontSize={selectedFontSize}
+                  tier={profile?.tier || 'free'}
+                />
+              </>
             ) : (
               <div className="text-white/60 text-center">
                 <p className="text-4xl mb-2">📝</p>
@@ -225,9 +225,30 @@ export default function StudioEditPage() {
 
         {/* Sidebar */}
         <div className="w-80 border-l border-border bg-white flex flex-col">
-          <div className="p-4 border-b border-border">
+          <div className="p-4 border-b border-border flex items-center justify-between">
             <h3 className="font-semibold text-sm">ซับไตเติล ({store.subtitles.length})</h3>
+            {selectedSub && (
+              <button
+                onClick={() => setShowStyleEditor(!showStyleEditor)}
+                className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                  showStyleEditor ? 'bg-primary text-white' : 'bg-surface text-text-secondary hover:bg-surface/80'
+                }`}
+              >
+                🎨 Style
+              </button>
+            )}
           </div>
+
+          {/* Style Editor Panel (เมื่อเลือก subtitle และกด Style) */}
+          {showStyleEditor && selectedSub && (
+            <div className="border-b border-border">
+              <SegmentStyleEditor
+                segments={selectedSub.segments || textToSegments(selectedSub.id, selectedSub.text)}
+                onChange={handleSegmentsChange}
+              />
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto">
             {store.subtitles.length === 0 ? (
               <div className="p-4 text-center text-text-secondary text-sm">ยังไม่มีซับไตเติล</div>
@@ -245,8 +266,8 @@ export default function StudioEditPage() {
                         store.selectSubtitle(sub.id);
                         if (videoRef.current) videoRef.current.currentTime = sub.start;
                       }}
-                      onUpdate={(updates) => { store.updateSubtitle(sub.id, updates); refreshVttTrack(); }}
-                      onDelete={() => { store.removeSubtitle(sub.id); refreshVttTrack(); }}
+                      onUpdate={(updates) => { store.updateSubtitle(sub.id, updates); }}
+                      onDelete={() => { store.removeSubtitle(sub.id); }}
                     />
                   ))}
                 </div>

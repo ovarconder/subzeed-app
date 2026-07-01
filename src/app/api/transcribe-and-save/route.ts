@@ -115,14 +115,35 @@ export async function POST(request: NextRequest) {
 
     // ─── 4. แปลงเป็น SubtitleEntry ─────────────────────
     const uid = () => Math.random().toString(36).slice(2, 9);
-    let subtitles: SubtitleEntry[] = rawSegments.map((seg: any) => ({
-      id: `sub-${uid()}`,
-      start: Math.round(seg.start * 10) / 10,
-      end: Math.round(seg.end * 10) / 10,
-      text: seg.text.trim(),
-      position: 'bottom' as const,
-      y_offset: 90,
-    }));
+    let subtitles: SubtitleEntry[] = rawSegments.map((seg: any) => {
+      const id = `sub-${uid()}`;
+      return {
+        id,
+        start: Math.round(seg.start * 10) / 10,
+        end: Math.round(seg.end * 10) / 10,
+        text: seg.text.trim(),
+        segments: [{
+          id: `${id}-seg-0`,
+          text: seg.text.trim(),
+          style: {
+            color: '#FFFFFF',
+            opacity: 1,
+            strokeColor: '#000000',
+            strokeWidth: 2,
+            strokeOpacity: 1,
+            shadowColor: '#000000',
+            shadowOpacity: 0.5,
+            shadowOffsetX: 0,
+            shadowOffsetY: 2,
+            shadowBlur: 4,
+            shadowAngle: 0,
+            fontWeight: 'normal' as const,
+          },
+        }],
+        position: 'bottom' as const,
+        y_offset: 90,
+      };
+    });
 
     // ─── 5. AI Vocabulary (Gemini) — ถ้า Premium ขึ้นไป ─
     if (enableAiVocab && profile.tier !== 'free' && profile.tier !== 'basic') {

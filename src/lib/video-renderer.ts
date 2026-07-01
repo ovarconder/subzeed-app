@@ -13,7 +13,7 @@
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
-import type { SubtitleEntry } from './types';
+import type { SubtitleEntry, TextSegment, FontWeight } from './types';
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -239,20 +239,112 @@ export async function renderVideoWithSubtitles(
 }
 
 // ─── ASS Builder ───────────────────────────────────────
+// รองรับ segment-based rendering (หลายสี/สไตล์ในบรรทัดเดียว)
+// ใช้ ASS override codes: {\c&Hxxxxxx&}, {\b1}, {\i1}, {\bord}, {\shad} etc.
 
 function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
   const l: string[] = [];
   l.push('[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 640', 'PlayResY: 360', 'ScaledBorderAndShadow: yes', '');
   l.push('[V4+ Styles]');
   l.push('Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding');
+  // Default style (ใช้เมื่อไม่มี segment override)
   l.push(`Style: Default,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`);
   l.push('');
   l.push('[Events]');
   l.push('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
   subs.forEach((s) => {
-    l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${s.text.replace(/\n/g, '\\N')}`);
+    // ถ้ามี segments ให้ render แบบหลายสี
+    if (s.segments && s.segments.length > 0) {
+      const assText = s.segments.map(seg => segmentToAss(seg, opts)).join('');
+      l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${assText}`);
+    } else {
+      // Fallback: ใช้ข้อความ plain
+      l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${s.text.replace(/\n/g, '\\N')}`);
+    }
   });
   return l.join('\n');
+}
+
+/**
+ * แปลง TextSegment → ASS override codes
+ * รองรับ: สี (PrimaryColour), Bold, Italic, Border (Outline), Shadow
+ */
+function segmentToAss(seg: TextSegment, opts: RenderOptions): string {
+  const st = seg.style;
+  const tags: string[] = [];
+
+  // ─── Color (PrimaryColour) ──────────────────────────
+  // ASS ใช้สีรูปแบบ &HBBGGRR& (little-endian)
+  const hexColor = hexToAssColor(st.color);
+  tags.push(`\\c${hexColor}`);
+
+  // ─── Opacity (Alpha) ────────────────────────────────
+  // ASS alpha = 255 - (opacity * 255) แปลงเป็น &HFF&
+  const alpha = Math.round((1 - st.opacity) * 255);
+  tags.push(`\\alpha&H${alpha.toString(16).padStart(2, '0').toUpperCase()}&`);
+
+  // ─── Bold ────────────────────────────────────────────
+  const isBold = st.fontWeight === 'bold' || st.fontWeight === 'bold-italic';
+  const isItalic = st.fontWeight === 'italic' || st.fontWeight === 'bold-italic';
+  tags.push(`\\b${isBold ? '1' : '0'}`);
+  tags.push(`\\i${isItalic ? '1' : '0'}`);
+
+  // ─── Stroke (Outline) ───────────────────────────────
+  if (st.strokeWidth > 0 && st.strokeOpacity > 0) {
+    const outlineColor = hexToAssColor(st.strokeColor);
+    tags.push(`\\bord${st.strokeWidth}`);
+    tags.push(`\\3c${outlineColor}`);
+    // Outline alpha
+    const outlineAlpha = Math.round((1 - st.strokeOpacity) * 255);
+    tags.push(`\\3a&H${outlineAlpha.toString(16).padStart(2, '0').toUpperCase()}&`);
+  } else {
+    tags.push('\\bord0');
+  }
+
+  // ─── Shadow ──────────────────────────────────────────
+  if (st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
+    // ASS shadow distance (ใช้ offset Y เป็นหลัก เพราะ ASS shadow เป็นทิศทางเดียว)
+    const shadowDist = Math.max(1, Math.abs(st.shadowOffsetY));
+    tags.push(`\\shad${shadowDist}`);
+    const shadowColor = hexToAssColor(st.shadowColor);
+    tags.push(`\\4c${shadowColor}`);
+    const shadowAlpha = Math.round((1 - st.shadowOpacity) * 255);
+    tags.push(`\\4a&H${shadowAlpha.toString(16).padStart(2, '0').toUpperCase()}&`);
+  } else {
+    tags.push('\\shad0');
+  }
+
+  // ─── Font Size (ใช้ของ segment ถ้าต้องการต่าง) ─────
+  // ใช้ขนาดปกติ
+
+  const tagString = `{${tags.join('')}}`;
+  return `${tagString}${escapeAssText(seg.text)}`;
+}
+
+/**
+ * แปลง hex color (#RRGGBB หรือ #RGB) → ASS format (&HBBGGRR&)
+ */
+function hexToAssColor(hex: string): string {
+  let c = hex.replace('#', '');
+  if (c.length === 3) {
+    c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+  }
+  // ASS ใช้ RGB แต่สลับเป็น BGR (little-endian)
+  const r = c.substring(0, 2);
+  const g = c.substring(2, 4);
+  const b = c.substring(4, 6);
+  return `&H${b}${g}${r}&`;
+}
+
+/**
+ * Escape ข้อความสำหรับ ASS (ป้องกันอักขระพิเศษ)
+ */
+function escapeAssText(text: string): string {
+  return text
+    .replace(/\n/g, '\\N')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+    .replace(/\|/g, '\\|');
 }
 
 function fmt(sec: number): string {

@@ -107,12 +107,85 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
   },
 };
 
-// --- Subtitle Entry ---
+// ============================================================
+// 🎨 STYLE & TEXT SEGMENT TYPES — รองรับหลายสีในบรรทัดเดียว
+// ============================================================
+
+/** Font weight options */
+export type FontWeight = 'normal' | 'bold' | 'italic' | 'bold-italic';
+
+/** Style for a single text segment (ส่วนย่อยของข้อความ) */
+export interface TextSegmentStyle {
+  /** สีข้อความ (hex, rgba, หรือชื่อสี) */
+  color: string;
+  /** ความทึบของข้อความ 0-1 */
+  opacity: number;
+  /** สีของ Stroke (ขอบ) */
+  strokeColor: string;
+  /** ความหนาของ Stroke (0 = ไม่มี) */
+  strokeWidth: number;
+  /** ความทึบของ Stroke 0-1 */
+  strokeOpacity: number;
+  /** สีเงา */
+  shadowColor: string;
+  /** ความทึบเงา 0-1 */
+  shadowOpacity: number;
+  /** ระยะห่างเงาแกน X (px) */
+  shadowOffsetX: number;
+  /** ระยะห่างเงาแกน Y (px) */
+  shadowOffsetY: number;
+  /** รัศมีเบลอเงา (px) */
+  shadowBlur: number;
+  /** องศาเงา (0-360) — ใช้คำนวณ offsetX/offsetY ถ้าต้องการ */
+  shadowAngle: number;
+  /** รูปแบบตัวหนา/เอียง */
+  fontWeight: FontWeight;
+}
+
+/** หนึ่ง segment ในบรรทัดข้อความ */
+export interface TextSegment {
+  id: string;
+  text: string;
+  style: TextSegmentStyle;
+}
+
+/** ค่าเริ่มต้นของ TextSegmentStyle */
+export const DEFAULT_SEGMENT_STYLE: TextSegmentStyle = {
+  color: '#FFFFFF',
+  opacity: 1,
+  strokeColor: '#000000',
+  strokeWidth: 2,
+  strokeOpacity: 1,
+  shadowColor: '#000000',
+  shadowOpacity: 0.5,
+  shadowOffsetX: 0,
+  shadowOffsetY: 2,
+  shadowBlur: 4,
+  shadowAngle: 0,
+  fontWeight: 'normal',
+};
+
+/** Helper: แปลง segments → plain text */
+export function segmentsToText(segments: TextSegment[]): string {
+  return segments.map(s => s.text).join('');
+}
+
+/** Helper: สร้าง segments จากข้อความ plain (fallback) */
+export function textToSegments(id: string, text: string): TextSegment[] {
+  return [{
+    id: `${id}-seg-0`,
+    text,
+    style: { ...DEFAULT_SEGMENT_STYLE },
+  }];
+}
+
+// --- Subtitle Entry (ขยาย) ---
 export interface SubtitleEntry {
   id: string;
   start: number; // seconds
   end: number;
-  text: string;
+  text: string; // plain text (fallback / legacy)
+  segments: TextSegment[]; // NEW: รองรับหลายสีหลายสไตล์
   position: 'bottom' | 'top' | 'middle';
   y_offset: number; // 0-100 percent
 }

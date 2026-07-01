@@ -78,7 +78,7 @@ function injectVttTrack(video: HTMLVideoElement | null, vttUrl: string) {
 export default function StudioPage() {
   const router = useRouter();
   const supabase = createClient();
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const { addToast } = useToast();
   const store = useSubtitleStore();
 
@@ -86,6 +86,24 @@ export default function StudioPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const vttUrlRef = useRef<string | null>(null);
+
+  // ─── Fetch profile จาก `/api/profile` โดยตรง (ไม่พึ่ง useAuth cache) ──
+  const [studioProfile, setStudioProfile] = useState<{
+    tier: string;
+    quota_minutes_total: number;
+    quota_minutes_used: number;
+    is_super_admin: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!user) { setStudioProfile(null); return; }
+    fetch(api('/api/profile'), { headers: { 'x-user-id': user.id } })
+      .then(r => r.json())
+      .then(d => {
+        if (d.profile) setStudioProfile(d.profile);
+      })
+      .catch(() => {});
+  }, [user]);
 
   // Local video storage (IndexedDB)
   const { storeVideo, loadVideo, removeVideo } = useVideoStorage();
@@ -109,15 +127,15 @@ export default function StudioPage() {
   const [useHardwareAccel, setUseHardwareAccel] = useState(supportsHardwareAccel());
   const [gifMaxWidth, setGifMaxWidth] = useState(480);
 
-  // Check quota
-  const tierConfig = profile ? TIER_CONFIGS[profile.tier] : TIER_CONFIGS.free;
-  const isFree = profile?.tier === 'free';
-  const isPremiumOrUp = profile?.tier === 'premium' || profile?.tier === 'business_starter' || profile?.tier === 'business_pro' || profile?.tier === 'unlimited';
-  // ตรวจสอบว่า tier นี้มีสิทธิ์ใช้ AI Smart (Translation) หรือไม่
-  const hasAiSmart = profile ? TIER_CONFIGS[profile.tier]?.aiVocabulary : false;
-  const hasAiVocab = profile ? TIER_CONFIGS[profile.tier]?.aiVocabulary : false;
-  const isUnlimited = profile?.tier === 'unlimited';
-  const quotaLeft = isUnlimited ? Infinity : (profile ? profile.quota_minutes_total - profile.quota_minutes_used : 0);
+  // Check quota (จาก studioProfile ที่ fetch เอง ไม่พึ่ง useAuth cache)
+  const p = studioProfile;
+  const tierConfig = p ? TIER_CONFIGS[p.tier as keyof typeof TIER_CONFIGS] : TIER_CONFIGS.free;
+  const isFree = p?.tier === 'free';
+  const isPremiumOrUp = p?.tier === 'premium' || p?.tier === 'business_starter' || p?.tier === 'business_pro' || p?.tier === 'unlimited';
+  const hasAiSmart = p ? TIER_CONFIGS[p.tier as keyof typeof TIER_CONFIGS]?.aiVocabulary : false;
+  const hasAiVocab = p ? TIER_CONFIGS[p.tier as keyof typeof TIER_CONFIGS]?.aiVocabulary : false;
+  const isUnlimited = p?.tier === 'unlimited';
+  const quotaLeft = isUnlimited ? Infinity : (p ? (p.quota_minutes_total ?? 0) - (p.quota_minutes_used ?? 0) : 0);
 
   // ---- Video Handling ----
   const handleFileSelect = useCallback((file: File) => {
@@ -551,7 +569,7 @@ export default function StudioPage() {
               {isUnlimited ? (
                 <span className="text-xs text-success font-medium">♾️ ไม่จำกัด</span>
               ) : (
-                <>{quotaLeft.toFixed(1)} / {profile?.quota_minutes_total || 20} นาที</>
+                <>{quotaLeft.toFixed(1)} / {p?.quota_minutes_total || 20} นาที</>
               )}
             </div>
           </div>
@@ -559,7 +577,7 @@ export default function StudioPage() {
           {/* Subtitle Display Settings Bar */}
           {store.subtitles.length > 0 && (
             <SubtitleSettingsBar
-              tier={profile?.tier || 'free'}
+              tier={(p?.tier || 'free') as any}
               fontFamily={selectedFontFamily}
               fontSize={selectedFontSize}
               onFontFamilyChange={setSelectedFontFamily}

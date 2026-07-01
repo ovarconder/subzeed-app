@@ -12,7 +12,7 @@
 // ============================================================
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { fetchFile } from '@ffmpeg/util';
 import type { SubtitleEntry, TextSegment, FontWeight } from './types';
 
 // ─── Types ──────────────────────────────────────────────
@@ -73,16 +73,13 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = {
 };
 
 // ─── FFmpeg Singleton ──────────────────────────────────
-// พยายามโหลดจาก CDN หลายแห่ง (fallback) + error handling
+// ใช้ CDN — hardcode URL (ไม่ใช้ toBlobURL เพื่อเลี่ยง Turbopack issue)
 
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoaded = false;
 let ffmpegLoadError: string | null = null;
 
-const FFMPEG_CORE_URLS = [
-  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm',
-  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm',
-];
+const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
 
 async function getFFmpeg(): Promise<FFmpeg> {
   if (ffmpegLoaded && ffmpeg) return ffmpeg;
@@ -92,30 +89,22 @@ async function getFFmpeg(): Promise<FFmpeg> {
 
   ffmpeg = new FFmpeg();
 
-  // Log FFmpeg messages
   ffmpeg.on('log', ({ type, message }) => {
     if (type === 'error') console.error('[ffmpeg]', message);
   });
 
-  let lastError: unknown;
-
-  for (const baseURL of FFMPEG_CORE_URLS) {
-    try {
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-      });
-      ffmpegLoaded = true;
-      console.log(`[ffmpeg] Loaded from ${baseURL}`);
-      return ffmpeg!;
-    } catch (err) {
-      console.warn(`[ffmpeg] Failed to load from ${baseURL}:`, err);
-      lastError = err;
-    }
+  try {
+    await ffmpeg.load({
+      coreURL: `${FFMPEG_BASE}/ffmpeg-core.js`,
+      wasmURL: `${FFMPEG_BASE}/ffmpeg-core.wasm`,
+    });
+    ffmpegLoaded = true;
+    console.log('[ffmpeg] Loaded from CDN');
+    return ffmpeg;
+  } catch (err) {
+    ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';
+    throw new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${ffmpegLoadError}`);
   }
-
-  ffmpegLoadError = lastError instanceof Error ? lastError.message : 'Unknown error loading FFmpeg';
-  throw new Error(`ไม่สามารถโหลด FFmpeg.wasm จาก CDN ได้ (ลอง ${FFMPEG_CORE_URLS.length} แหล่งแล้ว): ${ffmpegLoadError}`);
 }
 
 // ─── Codec helpers ─────────────────────────────────────

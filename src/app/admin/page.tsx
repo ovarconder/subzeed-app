@@ -142,6 +142,8 @@ function AdminContent() {
       fetchData();
     } catch (err: any) {
       addToast(`❌ ${err.message}`, 'error');
+      // reload data เพื่อคืนค่าเดิม (optimistic update อาจเด้ง)
+      fetchData();
     }
   };
 

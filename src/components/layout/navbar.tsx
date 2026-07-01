@@ -2,18 +2,24 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { useRouter } from 'next/navigation';
 import { TIER_CONFIGS } from '@/lib/types';
 import { useSiteConfig } from '@/components/layout/site-config-provider';
 
 export function Navbar() {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, refreshProfile } = useAuth();
   const { config: siteConfig } = useSiteConfig();
   const router = useRouter();
   const [accountOpen, setAccountOpen] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─── Refresh profile ทุกครั้งที่ component mount / focus ──
+  useEffect(() => {
+    if (!user) return;
+    refreshProfile();
+  }, [user]);
 
   const openMenu = () => {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);

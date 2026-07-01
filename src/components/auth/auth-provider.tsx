@@ -58,7 +58,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       else setProfile(null);
     });
 
-    return () => subscription.unsubscribe();
+    // ─── Refresh profile เมื่อ window focus เพื่อให้ค่าสดเสมอ ──
+    const onFocus = () => {
+      supabase.auth.getSession().then((result: { data: { session: Session | null } }) => {
+        if (result.data.session?.user) fetchProfile(result.data.session.user.id);
+      });
+    };
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
   const signOut = async () => {

@@ -70,20 +70,49 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = {
 };
 
 // ─── FFmpeg Singleton ──────────────────────────────────
+// พยายามโหลดจาก CDN หลายแห่ง (fallback) + error handling
 
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoaded = false;
+let ffmpegLoadError: string | null = null;
+
+const FFMPEG_CORE_URLS = [
+  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm',
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm',
+];
 
 async function getFFmpeg(): Promise<FFmpeg> {
   if (ffmpegLoaded && ffmpeg) return ffmpeg;
+  if (ffmpegLoadError) {
+    throw new Error(`FFmpeg โหลดไม่สำเร็จ (ก่อนหน้า): ${ffmpegLoadError}`);
+  }
+
   ffmpeg = new FFmpeg();
-  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-  await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+
+  // Log FFmpeg messages
+  ffmpeg.on('log', ({ type, message }) => {
+    if (type === 'error') console.error('[ffmpeg]', message);
   });
-  ffmpegLoaded = true;
-  return ffmpeg;
+
+  let lastError: unknown;
+
+  for (const baseURL of FFMPEG_CORE_URLS) {
+    try {
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+      ffmpegLoaded = true;
+      console.log(`[ffmpeg] Loaded from ${baseURL}`);
+      return ffmpeg!;
+    } catch (err) {
+      console.warn(`[ffmpeg] Failed to load from ${baseURL}:`, err);
+      lastError = err;
+    }
+  }
+
+  ffmpegLoadError = lastError instanceof Error ? lastError.message : 'Unknown error loading FFmpeg';
+  throw new Error(`ไม่สามารถโหลด FFmpeg.wasm จาก CDN ได้ (ลอง ${FFMPEG_CORE_URLS.length} แหล่งแล้ว): ${ffmpegLoadError}`);
 }
 
 // ─── Codec helpers ─────────────────────────────────────
@@ -149,53 +178,107 @@ export async function renderVideoWithSubtitles(
   const opts = { ...DEFAULT_RENDER_OPTIONS, ...options };
   const ext = extOf(opts.format);
 
-  // 1. Load FFmpeg
-  onProgress?.(2);
-  const ff = await getFFmpeg();
-  onProgress?.(5);
+  try {
+    // 1. Load FFmpeg
+    onProgress?.(2);
+    const ff = await getFFmpeg();
+    onProgress?.(5);
 
-  // 2. Get video data
-  const videoData = typeof videoBlobOrUrl === 'string'
-    ? await (await fetch(videoBlobOrUrl)).blob()
-    : videoBlobOrUrl;
-  onProgress?.(8);
+    // 2. Get video data
+    onProgress?.(6);
+    let videoData: Blob;
+    if (typeof videoBlobOrUrl === 'string') {
+      const resp = await fetch(videoBlobOrUrl);
+      if (!resp.ok) throw new Error(`โหลดวิดีโอไม่สำเร็จ (HTTP ${resp.status})`);
+      videoData = await resp.blob();
+    } else {
+      videoData = videoBlobOrUrl;
+    }
+    if (videoData.size === 0) throw new Error('ไฟล์วิดีโอว่างเปล่า');
+    onProgress?.(8);
 
-  // 3. Write input to virtual FS
-  const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
-  await ff.writeFile(inName, await fetchFile(videoData));
-  onProgress?.(10);
+    // 3. Write input to virtual FS
+    const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
+    await ff.writeFile(inName, await fetchFile(videoData));
+    onProgress?.(10);
 
-  // 4. Build ASS subtitle
-  const ass = buildAss(subtitles, opts);
-  await ff.writeFile('subs.ass', ass);
-  onProgress?.(12);
+    // 4. Build ASS subtitle
+    const ass = buildAss(subtitles, opts);
+    await ff.writeFile('subs.ass', ass);
+    onProgress?.(12);
 
-  // 5. FFmpeg progress
-  const outName = `output.${ext}`;
-  ff.on('progress', ({ progress }) => {
-    onProgress?.(Math.min(12 + Math.round(progress * 83), 95));
-  });
+    // 5. FFmpeg progress
+    const outName = `output.${ext}`;
+    ff.on('progress', ({ progress: pct }) => {
+      const mapped = Math.min(12 + Math.round(pct * 83), 95);
+      onProgress?.(mapped);
+    });
 
-  // 6. Build arguments
-  let args: string[];
+    // 6. Build arguments
+    if (opts.format === 'gif') {
+      await renderGif(ff, inName, outName, opts);
+    } else {
+      await renderVideo(ff, inName, outName, opts);
+    }
 
-  if (opts.format === 'gif') {
-    // ─── GIF Export ──────────────────────────────────
-    // ใช้ palettegen + paletteuse เพื่อคุณภาพดี
-    const paletteName = 'palette.png';
-    const fps = Math.max(5, Math.round(opts.fps / (opts.gifFrameSkip + 1)));
+    // 7. Read result
+    onProgress?.(97);
+    const readResult = await ff.readFile(outName);
+    let dataBuffer: ArrayBuffer;
+    if (readResult instanceof Uint8Array) {
+      dataBuffer = readResult.buffer.slice(0) as ArrayBuffer;
+    } else if (typeof readResult === 'string') {
+      dataBuffer = new TextEncoder().encode(readResult).buffer as ArrayBuffer;
+    } else {
+      throw new Error('ไม่สามารถอ่านผลลัพธ์จาก FFmpeg ได้');
+    }
 
-    // Scale filter สำหรับ GIF (จำกัดความกว้าง)
-    const scale = `scale=${opts.gifMaxWidth}:-1:flags=lanczos`;
+    // Cleanup
+    await ff.deleteFile(inName).catch(() => {});
+    await ff.deleteFile(outName).catch(() => {});
+    await ff.deleteFile('subs.ass').catch(() => {});
 
-    // Step 1: สร้าง palette
+    if (dataBuffer.byteLength === 0) throw new Error('FFmpeg สร้างไฟล์ว่างเปล่า');
+
+    onProgress?.(99);
+    const blob = new Blob([dataBuffer], { type: mimeOf(opts.format) });
+    onProgress?.(100);
+    return blob;
+  } catch (err) {
+    // clean progress state
+    onProgress?.(0);
+    throw err; // โยนให้ caller จัดการ
+  }
+}
+
+/** แยก render video ออกมาให้อ่านง่ายขึ้น */
+async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: RenderOptions) {
+  const args = [
+    '-i', inName,
+    '-vf', `subtitles=subs.ass`,
+    ...codecArgs(opts.format, opts.quality, opts.useHardwareAccel),
+    '-c:a', 'aac', '-b:a', '128k',
+    '-movflags', '+faststart',
+    '-y', outName,
+  ];
+  await ff.exec(args);
+}
+
+/** แยก render GIF ออกมา */
+async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: RenderOptions) {
+  const paletteName = 'palette.png';
+  const fps = Math.max(5, Math.round(opts.fps / (opts.gifFrameSkip + 1)));
+  const scale = `scale=${opts.gifMaxWidth}:-1:flags=lanczos`;
+
+  try {
+    // Step 1: palette
     await ff.exec([
       '-i', inName,
       '-vf', `${scale},subtitles=subs.ass,palettegen=stats_mode=diff`,
       '-y', paletteName,
     ]);
 
-    // Step 2: สร้าง GIF จาก palette
+    // Step 2: GIF from palette
     await ff.exec([
       '-i', inName,
       '-i', paletteName,
@@ -203,39 +286,9 @@ export async function renderVideoWithSubtitles(
       '-r', String(fps),
       '-y', outName,
     ]);
-
-    await ff.deleteFile(paletteName);
-  } else {
-    // ─── Video Export ────────────────────────────────
-    args = [
-      '-i', inName,
-      '-vf', `subtitles=subs.ass`,
-      ...codecArgs(opts.format, opts.quality, opts.useHardwareAccel),
-      '-c:a', 'aac', '-b:a', '128k',
-      '-movflags', '+faststart',
-      '-y', outName,
-    ];
-
-    await ff.exec(args);
+  } finally {
+    await ff.deleteFile(paletteName).catch(() => {});
   }
-
-  // 7. Read result
-  onProgress?.(97);
-  const readResult = await ff.readFile(outName);
-  const dataBytes: Uint8Array = typeof readResult === 'string'
-    ? new TextEncoder().encode(readResult)
-    : readResult;
-
-  // Cleanup
-  await ff.deleteFile(inName);
-  await ff.deleteFile(outName);
-  await ff.deleteFile('subs.ass');
-
-  onProgress?.(99);
-  const ab = dataBytes.buffer.slice(0) as ArrayBuffer;
-  const blob = new Blob([ab], { type: mimeOf(opts.format) });
-  onProgress?.(100);
-  return blob;
 }
 
 // ─── ASS Builder ───────────────────────────────────────

@@ -401,7 +401,14 @@ export default function StudioPage() {
       downloadVideoBlob(blob, `${baseName}-subzeed.${exportFormat}`);
       addToast(`ดาวน์โหลดวิดีโอ (${exportFormat.toUpperCase()}) ที่ฝังซับแล้ว!`, 'success');
     } catch (err: any) {
-      addToast(`ส่งออกวิดีโอไม่สำเร็จ: ${err.message}`, 'error');
+      const msg = err.message || '';
+      if (msg.includes('FFmpeg') || msg.includes('ffmpeg')) {
+        addToast(`⚠️ FFmpeg โหลดไม่สำเร็จ — ลองรีเฟรชหน้าหรือเปลี่ยนอินเทอร์เน็ต`, 'error');
+      } else if (msg.includes('HTTP') || msg.includes('fetch')) {
+        addToast(`⚠️ ไม่สามารถเข้าถึงไฟล์วิดีโอ — ลองเลือกวิดีโอใหม่`, 'error');
+      } else {
+        addToast(`ส่งออกวิดีโอไม่สำเร็จ: ${msg.slice(0, 120)}`, 'error');
+      }
     } finally {
       setIsExporting(false);
       setExportProgress(0);

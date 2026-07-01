@@ -37,11 +37,25 @@ export function SubtitleCanvasOverlay({
   fontSize,
   tier,
 }: SubtitleCanvasOverlayProps) {
-  const currentTime = useSubtitleStore((s) => s.currentTime);
-  const subtitles = useSubtitleStore((s) => s.subtitles);
   const animFrameRef = useRef<number>(0);
-  const tierConfig = TIER_CONFIGS[tier];
-  const showWatermark = tierConfig.watermark;
+  const subtitlesRef = useRef<SubtitleEntry[]>([]);
+  const currentTimeRef = useRef<number>(0);
+  const showWatermark = TIER_CONFIGS[tier].watermark;
+
+  // ─── Sync store → refs (ไม่ trigger re-render) ──────
+  useEffect(() => {
+    const unsub1 = useSubtitleStore.subscribe((state: any) => {
+      subtitlesRef.current = state.subtitles;
+    });
+    const unsub2 = useSubtitleStore.subscribe((state: any) => {
+      currentTimeRef.current = state.currentTime;
+    });
+    // initial values
+    subtitlesRef.current = useSubtitleStore.getState().subtitles;
+    currentTimeRef.current = useSubtitleStore.getState().currentTime;
+
+    return () => { unsub1(); unsub2(); };
+  }, []);
 
   // ─── Canvas resize handler ──────────────────────────────
   const resizeCanvas = useCallback(() => {
@@ -56,14 +70,14 @@ export function SubtitleCanvasOverlay({
     canvas.style.height = `${rect.height}px`;
   }, [canvasRef, videoRef]);
 
-  // ─── Find active subtitle ──────────────────────────────
+  // ─── Find active subtitle (จาก refs) ─────────────────
   const findActiveSubtitle = useCallback((): SubtitleEntry | null => {
-    return subtitles.find(
-      (s) => currentTime >= s.start && currentTime <= s.end
-    ) ?? null;
-  }, [subtitles, currentTime]);
+    const subs = subtitlesRef.current;
+    const ct = currentTimeRef.current;
+    return subs.find((s) => ct >= s.start && ct <= s.end) ?? null;
+  }, []);
 
-  // ─── Render loop ─────────────────────────────────────────
+  // ─── Render loop (เริ่มครั้งเดียว, ไม่ restart) ──────
   useEffect(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -79,11 +93,8 @@ export function SubtitleCanvasOverlay({
     const draw = () => {
       const dpr = window.devicePixelRatio || 1;
 
-      // reset transform → clear ทั้ง canvas (ใช้ physical pixels)
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // scale → ทุกอย่างที่วาดจากนี้ใช้ CSS px
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const actualW = canvas.width / dpr;
@@ -96,19 +107,9 @@ export function SubtitleCanvasOverlay({
           ? activeSub.segments
           : [{ id: `${activeSub.id}-seg-0`, text: activeSub.text, style: { ...DEFAULT_SEGMENT_STYLE } }];
 
-        drawSegments(
-          ctx,
-          segs,
-          actualW,
-          actualH,
-          fontFamily,
-          fontSize,
-          activeSub.y_offset ?? 90,
-          activeSub.position ?? 'bottom',
-        );
+        drawSegments(ctx, segs, actualW, actualH, fontFamily, fontSize, activeSub.y_offset ?? 90, activeSub.position ?? 'bottom');
       }
 
-      // ─── Watermark (Free tier) ─────────────────────────
       if (showWatermark) {
         drawWatermark(ctx, actualW, actualH);
       }

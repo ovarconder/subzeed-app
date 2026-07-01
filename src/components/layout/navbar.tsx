@@ -49,7 +49,7 @@ export function Navbar() {
     fetchProfile();
   }, [user]);
 
-  const tierLabel = navProfile?.tier ? TIER_CONFIGS[navProfile.tier]?.name : 'Free';
+  const tierLabel = navProfile?.tier ? TIER_CONFIGS[navProfile.tier as keyof typeof TIER_CONFIGS]?.name : 'Free';
   const isUnlimited = navProfile?.tier === 'unlimited';
   const quotaLeft = isUnlimited
     ? Infinity

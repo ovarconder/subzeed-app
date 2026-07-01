@@ -7,6 +7,7 @@ import { useAuth } from '@/components/auth/auth-provider';
 import { useRouter } from 'next/navigation';
 import { TIER_CONFIGS } from '@/lib/types';
 import { useSiteConfig } from '@/components/layout/site-config-provider';
+import { api } from '@/lib/api';
 
 interface NavProfile {
   tier: string;
@@ -28,17 +29,14 @@ export function Navbar() {
   const fetchProfile = async () => {
     if (!user) { setNavProfile(null); return; }
     try {
-      // ดึง profile ผ่าน Supabase โดยตรง (service role bypass RLS)
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabase = createClient();
-      const { data } = await supabase
-        .from('profiles')
-        .select('tier, quota_minutes_total, quota_minutes_used, is_super_admin')
-        .eq('id', user.id)
-        .single();
-      if (data) {
-        console.log('[Navbar] Profile fetched:', data.tier, data.quota_minutes_total, data.quota_minutes_used);
-        setNavProfile(data as unknown as NavProfile);
+      const res = await fetch(api('/api/profile'), {
+        headers: { 'x-user-id': user.id },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.profile) {
+        console.log('[Navbar] Profile fetched via API:', data.profile.tier, data.profile.quota_minutes_total, data.profile.quota_minutes_used);
+        setNavProfile(data.profile);
       }
     } catch (e) {
       console.error('[Navbar] Failed to fetch profile:', e);

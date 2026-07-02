@@ -73,6 +73,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    try {
+      window.__subzeed_signout_initiated = true;
+    } catch {}
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
@@ -89,3 +92,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
+

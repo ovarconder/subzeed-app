@@ -20,6 +20,10 @@ import { useSubtitleStore } from '@/lib/store/subtitle-store';
 // Canvas coordinate system:
 //   canvas.width/height = CSS px * devicePixelRatio (physical pixels)
 //   แต่ ctx transform จะ scale ด้วย dpr ทำให้เราวาดโดยใช้ CSS px ได้เลย
+//
+// IMPORTANT:
+//   - Canvas size จะถูก lock หลังจาก mount ครั้งแรก (ใช้ video size ตอนนั้น)
+//   - จะไม่ resize ตาม video อีก เพื่อป้องกัน layout shift ตอน re-render
 // ============================================================
 
 interface SubtitleCanvasOverlayProps {
@@ -41,7 +45,7 @@ export function SubtitleCanvasOverlay({
   const subtitlesRef = useRef<SubtitleEntry[]>([]);
   const currentTimeRef = useRef<number>(0);
   const showWatermark = TIER_CONFIGS[tier].watermark;
-  const lastSizeRef = useRef({ w: 0, h: 0 });
+  const canvasReadyRef = useRef(false);
 
   // ─── Sync store → refs (ไม่ trigger re-render) ──────
   useEffect(() => {
@@ -54,21 +58,27 @@ export function SubtitleCanvasOverlay({
     return () => { unsub(); };
   }, []);
 
-  // ─── Canvas resize — ใช้ rAF เช็ค (ไม่ใช้ ResizeObserver) ──
-  const ensureCanvasSize = useCallback(() => {
+  // ─── ตั้งค่า canvas size ครั้งแรก (lock ไว้永不เปลี่ยน) ──
+  const initCanvasSize = useCallback(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
-    if (!canvas || !video) return;
+    if (!canvas || !video) return false;
+
     const rect = video.getBoundingClientRect();
     const w = Math.round(rect.width);
     const h = Math.round(rect.height);
-    if (w === lastSizeRef.current.w && h === lastSizeRef.current.h) return;
-    lastSizeRef.current = { w, h };
+    if (w === 0 || h === 0) return false;
+
     const dpr = window.devicePixelRatio || 1;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
+    canvasReadyRef.current = true;
+
+    // remove style width/height ที่ Tailwind เซ็ทไว้ (ให้ inline style จัดการ)
+    canvas.classList.remove('w-full', 'h-full');
+    return true;
   }, [canvasRef, videoRef]);
 
   // ─── Find active subtitle ──────────────────────────
@@ -87,13 +97,32 @@ export function SubtitleCanvasOverlay({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const draw = () => {
-      ensureCanvasSize();
+    // flag กัน resize ซ้ำ — size ถูกล็อคครั้งแรกที่ mount
+    let sizeInitialized = false;
+    let canvasW = 0;
+    let canvasH = 0;
+    let dpr = 1;
 
-      const dpr = window.devicePixelRatio || 1;
-      const w = lastSizeRef.current.w;
-      const h = lastSizeRef.current.h;
-      if (w === 0 || h === 0) {
+    const draw = () => {
+      // initialize canvas size แค่ครั้งเดียว (lock ไว้)
+      if (!sizeInitialized) {
+        const rect = video.getBoundingClientRect();
+        const w = Math.round(rect.width);
+        const h = Math.round(rect.height);
+        if (w > 0 && h > 0) {
+          dpr = window.devicePixelRatio || 1;
+          canvasW = w;
+          canvasH = h;
+          canvas.width = w * dpr;
+          canvas.height = h * dpr;
+          canvas.style.width = `${w}px`;
+          canvas.style.height = `${h}px`;
+          canvas.classList.remove('w-full', 'h-full');
+          sizeInitialized = true;
+        }
+      }
+
+      if (canvasW === 0 || canvasH === 0) {
         animFrameRef.current = requestAnimationFrame(draw);
         return;
       }
@@ -110,11 +139,11 @@ export function SubtitleCanvasOverlay({
           : [{ id: `${activeSub.id}-seg-0`, text: activeSub.text, style: { ...DEFAULT_SEGMENT_STYLE } }];
 
         const ds = activeSub.displayStyle;
-        drawSegments(ctx, segs, w, h, fontFamily, fontSize, activeSub.y_offset ?? 90, activeSub.position ?? 'bottom', ds);
+        drawSegments(ctx, segs, canvasW, canvasH, fontFamily, fontSize, activeSub.y_offset ?? 90, activeSub.position ?? 'bottom', ds);
       }
 
       if (showWatermark) {
-        drawWatermark(ctx, w, h);
+        drawWatermark(ctx, canvasW, canvasH);
       }
 
       animFrameRef.current = requestAnimationFrame(draw);
@@ -125,7 +154,11 @@ export function SubtitleCanvasOverlay({
     return () => {
       cancelAnimationFrame(animFrameRef.current);
     };
-  }, [canvasRef, videoRef, fontFamily, fontSize, showWatermark, findActiveSubtitle, ensureCanvasSize]);
+    // ⚠️ dependencies น้อยที่สุด — fontFamily/fontSize เท่านั้น
+    // ไม่รวม videoRef, canvasRef เพราะเป็น refs (stable เสมอ)
+    // ไม่รวม findActiveSubtitle (ใช้ closure จับ refs)
+    // ไม่รวม showWatermark (เปลี่ยนเมื่อ tier เปลี่ยน ซึ่งน้อยมาก)
+  }, [fontFamily, fontSize, showWatermark]);
 
   return null;
 }
@@ -186,9 +219,9 @@ function drawSegments(
 
   // ถ้าไม่มี bg → วางข้อความไม่ต้องมีกล่อง
   const boxX = bgActive ? centerX - bgWidth / 2 : centerX - totalWidth / 2;
+  const textY = bgActive ? boxY + bgHeight / 2 + fontSize * 0.4 : boxY + fontSize * 0.8;
 
   // ─── Box Shadow (เงากล่อง) ─────────────────────────────
-  ctx.save();
   if (bgActive && hasBoxShadow) {
     ctx.save();
     ctx.shadowColor = bs!.color;
@@ -217,12 +250,11 @@ function drawSegments(
 
   // ─── ข้อความแต่ละ segment ─────────────────────────────
   let cursorX = bgActive ? centerX - totalWidth / 2 : boxX;
-  const textY = bgActive ? boxY + bgHeight / 2 + fontSize * 0.4 : boxY + fontSize * 0.8;
 
   for (const m of metrics) {
     const st = m.style;
 
-    // Shadow ของตัวอักษร
+    // Shadow ของตัวอักษร (มาก่อน fill/stroke)
     if (st.shadowActive && st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
       ctx.save();
       ctx.globalAlpha = st.shadowOpacity;
@@ -265,8 +297,6 @@ function drawSegments(
 
     cursorX += m.width;
   }
-
-  ctx.restore(); // pop from top-level ctx.save()
 }
 
 // ─── Hex Color → rgba string ─────────────────────────────

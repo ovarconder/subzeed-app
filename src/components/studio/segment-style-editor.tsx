@@ -184,51 +184,64 @@ export function SegmentStyleEditor({ segments, onChange }: SegmentStyleEditorPro
           🖊️ Stroke (ขอบ)
         </summary>
         <div className="mt-2 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-text-secondary block mb-1">สี Stroke</label>
-              <div className="flex items-center gap-1">
-                <input
-                  type="color"
-                  value={currentStyle.strokeColor}
-                  onChange={(e) => updateStyle({ strokeColor: e.target.value })}
-                  className="w-8 h-8 rounded cursor-pointer border border-border"
-                />
-                <input
-                  type="text"
-                  value={currentStyle.strokeColor}
-                  onChange={(e) => updateStyle({ strokeColor: e.target.value })}
-                  className="flex-1 rounded border border-border px-2 py-1 text-[10px] bg-white font-mono"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] text-text-secondary block mb-1">ความหนา</label>
-              <input
-                type="range"
-                min={0}
-                max={8}
-                step={0.5}
-                value={currentStyle.strokeWidth}
-                onChange={(e) => updateStyle({ strokeWidth: Number(e.target.value) })}
-                className="w-full h-4 accent-primary"
-              />
-              <span className="text-[10px] text-text-secondary">{currentStyle.strokeWidth}px</span>
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] text-text-secondary block mb-1">ความทึบ Stroke</label>
+          <label className="flex items-center gap-2 text-[10px] text-text-secondary cursor-pointer">
             <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={currentStyle.strokeOpacity}
-              onChange={(e) => updateStyle({ strokeOpacity: Number(e.target.value) })}
-              className="w-full h-4 accent-primary"
+              type="checkbox"
+              checked={currentStyle.strokeActive}
+              onChange={(e) => updateStyle({ strokeActive: e.target.checked })}
+              className="accent-primary w-3 h-3"
             />
-            <span className="text-[10px] text-text-secondary">{Math.round(currentStyle.strokeOpacity * 100)}%</span>
-          </div>
+            เปิดใช้ Stroke
+          </label>
+          {currentStyle.strokeActive && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">สี Stroke</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="color"
+                      value={currentStyle.strokeColor}
+                      onChange={(e) => updateStyle({ strokeColor: e.target.value })}
+                      className="w-8 h-8 rounded cursor-pointer border border-border"
+                    />
+                    <input
+                      type="text"
+                      value={currentStyle.strokeColor}
+                      onChange={(e) => updateStyle({ strokeColor: e.target.value })}
+                      className="flex-1 rounded border border-border px-2 py-1 text-[10px] bg-white font-mono"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">ความหนา</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={8}
+                    step={0.5}
+                    value={currentStyle.strokeWidth}
+                    onChange={(e) => updateStyle({ strokeWidth: Number(e.target.value) })}
+                    className="w-full h-4 accent-primary"
+                  />
+                  <span className="text-[10px] text-text-secondary">{currentStyle.strokeWidth}px</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] text-text-secondary block mb-1">ความทึบ Stroke</label>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={currentStyle.strokeOpacity}
+                  onChange={(e) => updateStyle({ strokeOpacity: Number(e.target.value) })}
+                  className="w-full h-4 accent-primary"
+                />
+                <span className="text-[10px] text-text-secondary">{Math.round(currentStyle.strokeOpacity * 100)}%</span>
+              </div>
+            </>
+          )}
         </div>
       </details>
 
@@ -238,94 +251,107 @@ export function SegmentStyleEditor({ segments, onChange }: SegmentStyleEditorPro
           🌓 Shadow (เงา)
         </summary>
         <div className="mt-2 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-text-secondary block mb-1">สีเงา</label>
-              <div className="flex items-center gap-1">
-                <input
-                  type="color"
-                  value={currentStyle.shadowColor}
-                  onChange={(e) => updateStyle({ shadowColor: e.target.value })}
-                  className="w-8 h-8 rounded cursor-pointer border border-border"
-                />
-                <input
-                  type="text"
-                  value={currentStyle.shadowColor}
-                  onChange={(e) => updateStyle({ shadowColor: e.target.value })}
-                  className="flex-1 rounded border border-border px-2 py-1 text-[10px] bg-white font-mono"
-                />
+          <label className="flex items-center gap-2 text-[10px] text-text-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={currentStyle.shadowActive}
+              onChange={(e) => updateStyle({ shadowActive: e.target.checked })}
+              className="accent-primary w-3 h-3"
+            />
+            เปิดใช้ Shadow
+          </label>
+          {currentStyle.shadowActive && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">สีเงา</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="color"
+                      value={currentStyle.shadowColor}
+                      onChange={(e) => updateStyle({ shadowColor: e.target.value })}
+                      className="w-8 h-8 rounded cursor-pointer border border-border"
+                    />
+                    <input
+                      type="text"
+                      value={currentStyle.shadowColor}
+                      onChange={(e) => updateStyle({ shadowColor: e.target.value })}
+                      className="flex-1 rounded border border-border px-2 py-1 text-[10px] bg-white font-mono"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">ความทึบเงา</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={currentStyle.shadowOpacity}
+                    onChange={(e) => updateStyle({ shadowOpacity: Number(e.target.value) })}
+                    className="w-full h-4 accent-primary"
+                  />
+                  <span className="text-[10px] text-text-secondary">{Math.round(currentStyle.shadowOpacity * 100)}%</span>
+                </div>
               </div>
-            </div>
-            <div>
-              <label className="text-[10px] text-text-secondary block mb-1">ความทึบเงา</label>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={currentStyle.shadowOpacity}
-                onChange={(e) => updateStyle({ shadowOpacity: Number(e.target.value) })}
-                className="w-full h-4 accent-primary"
-              />
-              <span className="text-[10px] text-text-secondary">{Math.round(currentStyle.shadowOpacity * 100)}%</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-text-secondary block mb-1">Offset X (px)</label>
-              <input
-                type="range"
-                min={-20}
-                max={20}
-                step={1}
-                value={currentStyle.shadowOffsetX}
-                onChange={(e) => updateStyle({ shadowOffsetX: Number(e.target.value) })}
-                className="w-full h-4 accent-primary"
-              />
-              <span className="text-[10px] text-text-secondary">{currentStyle.shadowOffsetX}px</span>
-            </div>
-            <div>
-              <label className="text-[10px] text-text-secondary block mb-1">Offset Y (px)</label>
-              <input
-                type="range"
-                min={-20}
-                max={20}
-                step={1}
-                value={currentStyle.shadowOffsetY}
-                onChange={(e) => updateStyle({ shadowOffsetY: Number(e.target.value) })}
-                className="w-full h-4 accent-primary"
-              />
-              <span className="text-[10px] text-text-secondary">{currentStyle.shadowOffsetY}px</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-text-secondary block mb-1">Blur (px)</label>
-              <input
-                type="range"
-                min={0}
-                max={30}
-                step={1}
-                value={currentStyle.shadowBlur}
-                onChange={(e) => updateStyle({ shadowBlur: Number(e.target.value) })}
-                className="w-full h-4 accent-primary"
-              />
-              <span className="text-[10px] text-text-secondary">{currentStyle.shadowBlur}px</span>
-            </div>
-            <div>
-              <label className="text-[10px] text-text-secondary block mb-1">องศา</label>
-              <input
-                type="range"
-                min={0}
-                max={360}
-                step={1}
-                value={currentStyle.shadowAngle}
-                onChange={(e) => updateStyle({ shadowAngle: Number(e.target.value) })}
-                className="w-full h-4 accent-primary"
-              />
-              <span className="text-[10px] text-text-secondary">{currentStyle.shadowAngle}°</span>
-            </div>
-          </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">Offset X (px)</label>
+                  <input
+                    type="range"
+                    min={-20}
+                    max={20}
+                    step={1}
+                    value={currentStyle.shadowOffsetX}
+                    onChange={(e) => updateStyle({ shadowOffsetX: Number(e.target.value) })}
+                    className="w-full h-4 accent-primary"
+                  />
+                  <span className="text-[10px] text-text-secondary">{currentStyle.shadowOffsetX}px</span>
+                </div>
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">Offset Y (px)</label>
+                  <input
+                    type="range"
+                    min={-20}
+                    max={20}
+                    step={1}
+                    value={currentStyle.shadowOffsetY}
+                    onChange={(e) => updateStyle({ shadowOffsetY: Number(e.target.value) })}
+                    className="w-full h-4 accent-primary"
+                  />
+                  <span className="text-[10px] text-text-secondary">{currentStyle.shadowOffsetY}px</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">Blur (px)</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={30}
+                    step={1}
+                    value={currentStyle.shadowBlur}
+                    onChange={(e) => updateStyle({ shadowBlur: Number(e.target.value) })}
+                    className="w-full h-4 accent-primary"
+                  />
+                  <span className="text-[10px] text-text-secondary">{currentStyle.shadowBlur}px</span>
+                </div>
+                <div>
+                  <label className="text-[10px] text-text-secondary block mb-1">องศา</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={360}
+                    step={1}
+                    value={currentStyle.shadowAngle}
+                    onChange={(e) => updateStyle({ shadowAngle: Number(e.target.value) })}
+                    className="w-full h-4 accent-primary"
+                  />
+                  <span className="text-[10px] text-text-secondary">{currentStyle.shadowAngle}°</span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </details>
 

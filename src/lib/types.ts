@@ -155,7 +155,7 @@ export interface TextSegment {
 
 /** ค่าเริ่มต้นของ TextSegmentStyle */
 export const DEFAULT_SEGMENT_STYLE: TextSegmentStyle = {
-  strokeActive: true,
+  strokeActive: false,
   shadowActive: false,
   color: '#FFFFFF',
   opacity: 1,
@@ -164,7 +164,7 @@ export const DEFAULT_SEGMENT_STYLE: TextSegmentStyle = {
   strokeOpacity: 1,
   shadowColor: '#000000',
   shadowOpacity: 0.5,
-  shadowOffsetX: 0,
+  shadowOffsetX: 2,
   shadowOffsetY: 2,
   shadowBlur: 4,
   shadowAngle: 0,

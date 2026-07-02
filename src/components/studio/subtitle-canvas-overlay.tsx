@@ -41,64 +41,66 @@ export function SubtitleCanvasOverlay({
   const subtitlesRef = useRef<SubtitleEntry[]>([]);
   const currentTimeRef = useRef<number>(0);
   const showWatermark = TIER_CONFIGS[tier].watermark;
+  const lastSizeRef = useRef({ w: 0, h: 0 });
 
   // ─── Sync store → refs (ไม่ trigger re-render) ──────
   useEffect(() => {
-    const unsub1 = useSubtitleStore.subscribe((state: any) => {
+    const unsub = useSubtitleStore.subscribe((state: any) => {
       subtitlesRef.current = state.subtitles;
-    });
-    const unsub2 = useSubtitleStore.subscribe((state: any) => {
       currentTimeRef.current = state.currentTime;
     });
-    // initial values
     subtitlesRef.current = useSubtitleStore.getState().subtitles;
     currentTimeRef.current = useSubtitleStore.getState().currentTime;
-
-    return () => { unsub1(); unsub2(); };
+    return () => { unsub(); };
   }, []);
 
-  // ─── Canvas resize handler ──────────────────────────────
-  const resizeCanvas = useCallback(() => {
+  // ─── Canvas resize — ใช้ rAF เช็ค (ไม่ใช้ ResizeObserver) ──
+  const ensureCanvasSize = useCallback(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video) return;
     const rect = video.getBoundingClientRect();
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    if (w === lastSizeRef.current.w && h === lastSizeRef.current.h) return;
+    lastSizeRef.current = { w, h };
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
   }, [canvasRef, videoRef]);
 
-  // ─── Find active subtitle (จาก refs) ─────────────────
+  // ─── Find active subtitle ──────────────────────────
   const findActiveSubtitle = useCallback((): SubtitleEntry | null => {
     const subs = subtitlesRef.current;
     const ct = currentTimeRef.current;
     return subs.find((s) => ct >= s.start && ct <= s.end) ?? null;
   }, []);
 
-  // ─── Render loop (เริ่มครั้งเดียว, ไม่ restart) ──────
+  // ─── Render loop ──────────────────────────────────
   useEffect(() => {
-    const video = videoRef.current;
     const canvas = canvasRef.current;
+    const video = videoRef.current;
     if (!canvas || !video) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    resizeCanvas();
-    const observer = new ResizeObserver(() => resizeCanvas());
-    observer.observe(video);
-
     const draw = () => {
+      ensureCanvasSize();
+
       const dpr = window.devicePixelRatio || 1;
+      const w = lastSizeRef.current.w;
+      const h = lastSizeRef.current.h;
+      if (w === 0 || h === 0) {
+        animFrameRef.current = requestAnimationFrame(draw);
+        return;
+      }
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      const actualW = canvas.width / dpr;
-      const actualH = canvas.height / dpr;
 
       const activeSub = findActiveSubtitle();
 
@@ -108,11 +110,11 @@ export function SubtitleCanvasOverlay({
           : [{ id: `${activeSub.id}-seg-0`, text: activeSub.text, style: { ...DEFAULT_SEGMENT_STYLE } }];
 
         const ds = activeSub.displayStyle;
-        drawSegments(ctx, segs, actualW, actualH, fontFamily, fontSize, activeSub.y_offset ?? 90, activeSub.position ?? 'bottom', ds);
+        drawSegments(ctx, segs, w, h, fontFamily, fontSize, activeSub.y_offset ?? 90, activeSub.position ?? 'bottom', ds);
       }
 
       if (showWatermark) {
-        drawWatermark(ctx, actualW, actualH);
+        drawWatermark(ctx, w, h);
       }
 
       animFrameRef.current = requestAnimationFrame(draw);
@@ -122,11 +124,10 @@ export function SubtitleCanvasOverlay({
 
     return () => {
       cancelAnimationFrame(animFrameRef.current);
-      observer.disconnect();
     };
-  }, [canvasRef, videoRef, fontFamily, fontSize, showWatermark, findActiveSubtitle, resizeCanvas]);
+  }, [canvasRef, videoRef, fontFamily, fontSize, showWatermark, findActiveSubtitle, ensureCanvasSize]);
 
-  return null; // Canvas only, no DOM output
+  return null;
 }
 
 // ─── Draw segments ────────────────────────────────────────
@@ -162,7 +163,7 @@ function drawSegments(
   const bgOpacity = displayStyle?.bgOpacity ?? 0.6;
   const bgActive = displayStyle?.bgActive ?? true;
   const bs = displayStyle?.boxShadow;
-  const hasBoxShadow = bs?.active === true && bs.opacity > 0 && (bs.blur > 0 || bs.offsetX !== 0 || bs.offsetY !== 0);
+  const hasBoxShadow = bs?.active === true && (bs.opacity > 0 || bs.blur > 0 || bs.offsetX !== 0 || bs.offsetY !== 0);
 
   const bgWidth = totalWidth + paddingX * 2;
   const bgHeight = fontSize * 1.4 + paddingY * 2;
@@ -183,11 +184,12 @@ function drawSegments(
       break;
   }
 
-  const boxX = centerX - bgWidth / 2;
+  // ถ้าไม่มี bg → วางข้อความไม่ต้องมีกล่อง
+  const boxX = bgActive ? centerX - bgWidth / 2 : centerX - totalWidth / 2;
 
   // ─── Box Shadow (เงากล่อง) ─────────────────────────────
   ctx.save();
-  if (hasBoxShadow) {
+  if (bgActive && hasBoxShadow) {
     ctx.save();
     ctx.shadowColor = bs!.color;
     ctx.shadowBlur = bs!.blur;
@@ -214,14 +216,14 @@ function drawSegments(
   }
 
   // ─── ข้อความแต่ละ segment ─────────────────────────────
-  let cursorX = centerX - totalWidth / 2;
-  const textY = boxY + bgHeight / 2 + fontSize * 0.4;
+  let cursorX = bgActive ? centerX - totalWidth / 2 : boxX;
+  const textY = bgActive ? boxY + bgHeight / 2 + fontSize * 0.4 : boxY + fontSize * 0.8;
 
   for (const m of metrics) {
     const st = m.style;
 
     // Shadow ของตัวอักษร
-    if (st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
+    if (st.shadowActive && st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
       ctx.save();
       ctx.globalAlpha = st.shadowOpacity;
       ctx.font = buildFontString(st.fontWeight, fontSize, fontFamily);
@@ -237,7 +239,7 @@ function drawSegments(
     }
 
     // Stroke (ขอบตัวอักษร)
-    if (st.strokeWidth > 0 && st.strokeOpacity > 0) {
+    if (st.strokeActive && st.strokeWidth > 0 && st.strokeOpacity > 0) {
       ctx.save();
       ctx.globalAlpha = st.strokeOpacity;
       ctx.font = buildFontString(st.fontWeight, fontSize, fontFamily);

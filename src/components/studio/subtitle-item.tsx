@@ -37,10 +37,10 @@ function PreviewText({ segments, displayStyle }: { segments: TextSegment[]; disp
             opacity: seg.style.opacity,
             fontWeight: ['bold', 'bold-italic'].includes(seg.style.fontWeight) ? 'bold' : 'normal',
             fontStyle: ['italic', 'bold-italic'].includes(seg.style.fontWeight) ? 'italic' : 'normal',
-            textShadow: seg.style.shadowOpacity > 0
+            textShadow: seg.style.shadowActive && seg.style.shadowOpacity > 0
               ? `${seg.style.shadowOffsetX}px ${seg.style.shadowOffsetY}px ${seg.style.shadowBlur}px ${hexToRgba(seg.style.shadowColor, seg.style.shadowOpacity)}`
               : 'none',
-            WebkitTextStroke: seg.style.strokeWidth > 0 && seg.style.strokeOpacity > 0
+            WebkitTextStroke: seg.style.strokeActive && seg.style.strokeWidth > 0 && seg.style.strokeOpacity > 0
               ? `${seg.style.strokeWidth}px ${hexToRgba(seg.style.strokeColor, seg.style.strokeOpacity)}`
               : 'none',
           }}>
@@ -159,6 +159,13 @@ function MultiSegmentEditor({
       <details>
         <summary className="text-[9px] font-medium text-text-secondary cursor-pointer">Stroke</summary>
         <div className="mt-1 space-y-1.5 pl-1">
+          <label className="flex items-center gap-2 text-[9px] text-text-secondary cursor-pointer">
+            <input type="checkbox" checked={st.strokeActive}
+              onChange={(e) => updateStyle({ strokeActive: e.target.checked })}
+              className="accent-primary w-3 h-3" />
+            Active
+          </label>
+          {st.strokeActive && (<>
           <div className="flex items-center gap-1">
             <label className="text-[8px] text-text-secondary w-10">Color</label>
             <input type="color" value={st.strokeColor}
@@ -176,12 +183,20 @@ function MultiSegmentEditor({
               className="flex-1 h-3 accent-primary" />
             <span className="text-[8px] text-text-secondary w-6">{Math.round(st.strokeOpacity * 100)}%</span>
           </div>
+          </>)}
         </div>
       </details>
 
       <details>
         <summary className="text-[9px] font-medium text-text-secondary cursor-pointer">Text shadow</summary>
         <div className="mt-1 space-y-1.5 pl-1">
+          <label className="flex items-center gap-2 text-[9px] text-text-secondary cursor-pointer">
+            <input type="checkbox" checked={st.shadowActive}
+              onChange={(e) => updateStyle({ shadowActive: e.target.checked })}
+              className="accent-primary w-3 h-3" />
+            Active
+          </label>
+          {st.shadowActive && (<>
           <div className="flex items-center gap-1">
             <label className="text-[8px] text-text-secondary w-10">Color</label>
             <input type="color" value={st.shadowColor}
@@ -204,6 +219,7 @@ function MultiSegmentEditor({
               <span className="text-[8px] text-text-secondary">{Math.round(st.shadowOpacity * 100)}%</span>
             </div>
           </div>
+          </>)}
         </div>
       </details>
 

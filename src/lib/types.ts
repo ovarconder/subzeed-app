@@ -116,6 +116,10 @@ export type FontWeight = 'normal' | 'bold' | 'italic' | 'bold-italic';
 
 /** Style for a single text segment (ส่วนย่อยของข้อความ) */
 export interface TextSegmentStyle {
+  /** เปิด/ปิด stroke */
+  strokeActive: boolean;
+  /** เปิด/ปิด text shadow */
+  shadowActive: boolean;
   /** สีข้อความ (hex, rgba, หรือชื่อสี) */
   color: string;
   /** ความทึบของข้อความ 0-1 */
@@ -151,6 +155,8 @@ export interface TextSegment {
 
 /** ค่าเริ่มต้นของ TextSegmentStyle */
 export const DEFAULT_SEGMENT_STYLE: TextSegmentStyle = {
+  strokeActive: true,
+  shadowActive: false,
   color: '#FFFFFF',
   opacity: 1,
   strokeColor: '#000000',

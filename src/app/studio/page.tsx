@@ -473,7 +473,7 @@ export default function StudioPage() {
       <main className="flex-1 flex min-h-0">
         <div className="flex-1 flex flex-col min-h-0">
           {/* Toolbar + Settings Bar */}
-          <div className="border-b border-border bg-surface">
+          <div className="border-b border-border bg-surface shrink-0">
             {/* Toolbar row */}
             <div className="px-4 py-2 flex items-center gap-3">
             <input
@@ -595,17 +595,17 @@ export default function StudioPage() {
 
           {/* Video + Subtitles + Watermark Area */}
           <div
-            className="relative flex-1 min-h-0 bg-black flex items-center justify-center"
+            className="relative flex-1 min-h-0 bg-black flex items-start justify-center overflow-hidden"
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
           >
             {store.videoUrl ? (
-              <div className="relative w-full h-full flex items-center justify-center">
+              <div className="relative w-full h-full flex items-start justify-center">
                 <video
                   ref={videoRef}
                   src={store.videoUrl}
                   controls
-                  className="max-w-full max-h-full"
+                  className="max-w-full max-h-full object-contain"
                 />
                 {/* Canvas subtitle overlay (WYSIWYG: multi-color, stroke, shadow, bg) */}
                 <canvas

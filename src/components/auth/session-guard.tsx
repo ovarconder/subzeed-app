@@ -107,61 +107,74 @@ export function SessionGuard() {
   // ─── กลับไปหน้า login ───────────────────────────────
   const handleLoginAgain = () => {
     setIsLoggingIn(true);
-    // redirect ไป /auth/login — หลังจาก login success
-    // redirect_to จะถูกใช้กลับมาที่เดิม
+    // redirect ไป /login — หลังจาก login success
+    // redirect จะถูกใช้กลับมาที่เดิม
     const currentPath = window.location.href;
     try {
       localStorage.setItem('subzeed_redirect_path', currentPath);
     } catch {}
-    router.push(`/auth/login?redirect_to=${encodeURIComponent(currentPath)}`);
+    router.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
+  };
+
+  // ─── Dismiss (ปิด popup โดยไม่ redirect) ───────────
+  const handleDismiss = () => {
+    setShowAlert(false);
   };
 
   // ─── ถ้ายังไม่มีอะไร ให้ไม่ render อะไร ─────────────
   if (!showAlert) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 space-y-4">
-        {/* Icon */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-            <span className="text-xl">🔒</span>
+    <div className="fixed inset-0 z-[9999] pointer-events-none">
+      <div className="absolute bottom-6 right-6 pointer-events-auto">
+        <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 p-4 space-y-3 border border-border">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <span className="text-base">🔒</span>
+              </div>
+              <div>
+                <h4 className="font-semibold text-sm text-text-primary">Session Expired</h4>
+                <p className="text-xs text-text-secondary mt-0.5">{alertMessage}</p>
+              </div>
+            </div>
+            <button
+              onClick={handleDismiss}
+              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md hover:bg-surface transition-colors text-text-secondary"
+              title="Dismiss"
+            >
+              <span className="text-lg leading-none">&times;</span>
+            </button>
           </div>
-          <div>
-            <h3 className="font-semibold text-base text-text-primary">Session Expired</h3>
-            <p className="text-sm text-text-secondary mt-1">
-              {alertMessage}
+
+          {/* Info */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800">
+            <p className="font-medium">Your work is safe</p>
+            <p className="mt-0.5">
+              We have saved your current page. After signing in, you will return exactly where you left off.
             </p>
           </div>
-        </div>
 
-        {/* Info */}
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-          <p className="font-medium">Your work is safe 👍</p>
-          <p className="mt-0.5">
-            We have saved your current page. After signing in, you will return exactly where you left off.
-          </p>
-        </div>
-
-        {/* Buttons */}
-        <div className="flex items-center gap-2 justify-end pt-1">
-          <button
-            onClick={() => {
-              setShowAlert(false);
-              // refresh page — ถ้า session กลับมาแล้วจะหาย
-              window.location.reload();
-            }}
-            className="px-4 py-2 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
-          >
-            Reload (try again)
-          </button>
-          <button
-            onClick={handleLoginAgain}
-            disabled={isLoggingIn}
-            className="px-5 py-2 text-sm rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors disabled:opacity-60 font-medium"
-          >
-            {isLoggingIn ? 'Redirecting...' : 'Sign in again'}
-          </button>
+          {/* Buttons */}
+          <div className="flex items-center gap-2 justify-end pt-0.5">
+            <button
+              onClick={() => {
+                setShowAlert(false);
+                window.location.reload();
+              }}
+              className="px-3.5 py-1.5 text-xs rounded-lg border border-border text-text-secondary hover:bg-surface transition-colors"
+            >
+              Reload
+            </button>
+            <button
+              onClick={handleLoginAgain}
+              disabled={isLoggingIn}
+              className="px-4 py-1.5 text-xs rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors disabled:opacity-60 font-medium"
+            >
+              {isLoggingIn ? 'Redirecting...' : 'Sign in again'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

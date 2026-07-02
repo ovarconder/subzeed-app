@@ -9,6 +9,8 @@ interface SubtitleItemProps {
   index: number;
   isSelected: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  fontFamily?: string;
+  fontSize?: number;
   onSelect: () => void;
   onUpdate: (updates: Partial<SubtitleEntry>) => void;
   onDelete: () => void;
@@ -16,10 +18,17 @@ interface SubtitleItemProps {
 
 // ── ใชสำหรับ preview หลาย segment ────────────────────────
 
-function PreviewText({ segments, displayStyle }: { segments: TextSegment[]; displayStyle: SubtitleDisplayStyle }) {
+function PreviewText({ segments, displayStyle, fontFamily, fontSize }: {
+  segments: TextSegment[];
+  displayStyle: SubtitleDisplayStyle;
+  fontFamily?: string;
+  fontSize?: number;
+}) {
   const ds = displayStyle ?? DEFAULT_DISPLAY_STYLE;
   const showBg = ds.bgActive && ds.bgOpacity > 0;
   const showShadow = ds.boxShadow.active && ds.boxShadow.opacity > 0;
+  const ff = fontFamily || 'Arial';
+  const fs = fontSize || 20;
 
   return (
     <div className="relative inline-block max-w-full" style={{
@@ -29,6 +38,8 @@ function PreviewText({ segments, displayStyle }: { segments: TextSegment[]; disp
       boxShadow: showShadow
         ? `${ds.boxShadow.offsetX}px ${ds.boxShadow.offsetY}px ${ds.boxShadow.blur}px ${ds.boxShadow.spread}px ${hexToRgba(ds.boxShadow.color, ds.boxShadow.opacity)}`
         : 'none',
+      fontFamily: ff,
+      fontSize: `${fs}px`,
     }}>
       <span>
         {segments.map((seg, i) => (
@@ -358,7 +369,7 @@ function BoxStyleEditor({
 // ══════════════════════════════════════════════════════════
 
 export function SubtitleItem({
-  sub, index, isSelected, videoRef, onSelect, onUpdate, onDelete,
+  sub, index, isSelected, videoRef, onSelect, onUpdate, onDelete, fontFamily, fontSize,
 }: SubtitleItemProps) {
   const [showStyle, setShowStyle] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -491,7 +502,7 @@ export function SubtitleItem({
           ) : (
             <div className="flex-1 line-clamp-2 cursor-text rounded px-1 -mx-1 py-0.5 overflow-hidden"
               onClick={handleStartEdit}>
-              <PreviewText segments={segments} displayStyle={displayStyle} />
+              <PreviewText segments={segments} displayStyle={displayStyle} fontFamily={fontFamily} fontSize={fontSize} />
             </div>
           )}
         </div>

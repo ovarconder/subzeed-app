@@ -160,8 +160,9 @@ function drawSegments(
   const borderRadius = displayStyle?.borderRadius ?? fontSize * 0.3;
   const bgColor = displayStyle?.bgColor ?? '#000000';
   const bgOpacity = displayStyle?.bgOpacity ?? 0.6;
+  const bgActive = displayStyle?.bgActive ?? true;
   const bs = displayStyle?.boxShadow;
-  const hasBoxShadow = bs && bs.opacity > 0 && (bs.blur > 0 || bs.offsetX !== 0 || bs.offsetY !== 0);
+  const hasBoxShadow = bs?.active === true && bs.opacity > 0 && (bs.blur > 0 || bs.offsetX !== 0 || bs.offsetY !== 0);
 
   const bgWidth = totalWidth + paddingX * 2;
   const bgHeight = fontSize * 1.4 + paddingY * 2;
@@ -203,12 +204,14 @@ function drawSegments(
   }
 
   // ─── Background Box ─────────────────────────────────────
-  ctx.save();
-  ctx.fillStyle = hexToRgba(bgColor, bgOpacity);
-  ctx.beginPath();
-  roundRect(ctx, boxX, boxY, bgWidth, bgHeight, borderRadius);
-  ctx.fill();
-  ctx.restore();
+  if (bgActive) {
+    ctx.save();
+    ctx.fillStyle = hexToRgba(bgColor, bgOpacity);
+    ctx.beginPath();
+    roundRect(ctx, boxX, boxY, bgWidth, bgHeight, borderRadius);
+    ctx.fill();
+    ctx.restore();
+  }
 
   // ─── ข้อความแต่ละ segment ─────────────────────────────
   let cursorX = centerX - totalWidth / 2;

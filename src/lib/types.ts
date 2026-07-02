@@ -185,6 +185,8 @@ export function textToSegments(id: string, text: string): TextSegment[] {
 
 /** รูปแบบการแสดงผลของซับไตเติลบนวิดีโอ (ทั้งบรรทัด) */
 export interface SubtitleDisplayStyle {
+  /** เปิด/ปิด พื้นหลัง */
+  bgActive: boolean;
   /** ความทึบของพื้นหลัง 0-1 (0 = โปร่งใส ไม่มี BG) */
   bgOpacity: number;
   /** สีพื้นหลัง (hex) */
@@ -197,6 +199,8 @@ export interface SubtitleDisplayStyle {
   paddingX: number;
   /** เงาของกล่อง subtitle (offsetX, offsetY, blur, color, opacity) */
   boxShadow: {
+    /** เปิด/ปิด box shadow */
+    active: boolean;
     offsetX: number;
     offsetY: number;
     blur: number;
@@ -208,12 +212,14 @@ export interface SubtitleDisplayStyle {
 
 /** ค่าเริ่มต้นของ SubtitleDisplayStyle */
 export const DEFAULT_DISPLAY_STYLE: SubtitleDisplayStyle = {
+  bgActive: true,
   bgOpacity: 0.6,
   bgColor: '#000000',
   borderRadius: 6,
   paddingY: 6,
   paddingX: 12,
   boxShadow: {
+    active: false,
     offsetX: 0,
     offsetY: 0,
     blur: 0,

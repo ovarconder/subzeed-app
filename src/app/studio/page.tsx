@@ -422,7 +422,7 @@ export default function StudioPage() {
         style: {
           color: '#FFFFFF',
           opacity: 1,
-          strokeActive: true,
+          strokeActive: false,
           shadowActive: false,
           strokeColor: '#000000',
           strokeWidth: 2,
@@ -472,8 +472,10 @@ export default function StudioPage() {
       <Navbar />
       <main className="flex-1 flex min-h-0">
         <div className="flex-1 flex flex-col min-h-0">
-          {/* Toolbar */}
-          <div className="border-b border-border bg-surface px-4 py-2 flex items-center gap-3">
+          {/* Toolbar + Settings Bar */}
+          <div className="border-b border-border bg-surface">
+            {/* Toolbar row */}
+            <div className="px-4 py-2 flex items-center gap-3">
             <input
               ref={fileInputRef}
               type="file"
@@ -579,16 +581,17 @@ export default function StudioPage() {
             </div>
           </div>
 
-          {/* Subtitle Display Settings Bar */}
-          {store.subtitles.length > 0 && (
-            <SubtitleSettingsBar
-              tier={(p?.tier || 'free') as any}
-              fontFamily={selectedFontFamily}
-              fontSize={selectedFontSize}
-              onFontFamilyChange={setSelectedFontFamily}
-              onFontSizeChange={setSelectedFontSize}
-            />
-          )}
+            {/* Subtitle Display Settings Bar (อยู่ใน toolbar section = ไม่ดัน video) */}
+            {store.subtitles.length > 0 && (
+              <SubtitleSettingsBar
+                tier={(p?.tier || 'free') as any}
+                fontFamily={selectedFontFamily}
+                fontSize={selectedFontSize}
+                onFontFamilyChange={setSelectedFontFamily}
+                onFontSizeChange={setSelectedFontSize}
+              />
+            )}
+          </div>
 
           {/* Video + Subtitles + Watermark Area */}
           <div

@@ -480,7 +480,6 @@ export function InteractiveCanvasOverlay({
     tier === 'business_starter' ||
     tier === 'business_pro' ||
     tier === 'unlimited';
-  const showWatermark = TIER_CONFIGS[tier]?.watermark ?? true;
 
   // ─── Sync store → refs ─────────────────────────────────
   useEffect(() => {
@@ -692,36 +691,8 @@ export function InteractiveCanvasOverlay({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
 
-      const activeSub = findActiveSubtitle();
-
-      if (activeSub) {
-        const segs =
-          activeSub.segments && activeSub.segments.length > 0
-            ? activeSub.segments
-            : [
-                {
-                  id: `${activeSub.id}-seg-0`,
-                  text: activeSub.text,
-                  style: { ...DEFAULT_SEGMENT_STYLE },
-                },
-              ];
-
-        drawSegments(
-          ctx,
-          segs,
-          canvasW,
-          canvasH,
-          fontFamily,
-          fontSize,
-          activeSub.y_offset ?? 90,
-          activeSub.position ?? 'bottom',
-          activeSub.displayStyle
-        );
-      }
-
-      if (showWatermark) {
-        drawWatermark(ctx, canvasW, canvasH);
-      }
+      // ❌ ไม่วาด subtitle/watermark — SubtitleCanvasOverlay จัดการให้ (pointer-events-none)
+      // ✅ วาดเฉพาะ drag indicator อย่างเดียว
 
       // ─── วาด cursor indicator ถ้ากำลังลาก ─────────
       if (dragRef.current.isDragging) {
@@ -745,7 +716,7 @@ export function InteractiveCanvasOverlay({
 
     animFrameRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [fontFamily, fontSize, showWatermark, findActiveSubtitle]);
+  }, [fontFamily, fontSize, findActiveSubtitle]);
 
   return (
     <>

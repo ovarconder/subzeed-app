@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
           style: {
             color: '#FFFFFF',
             opacity: 1,
-            strokeActive: true,
+            strokeActive: false,
             shadowActive: false,
             strokeColor: '#000000',
             strokeWidth: 2,

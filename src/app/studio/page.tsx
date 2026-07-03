@@ -281,7 +281,7 @@ export default function StudioPage() {
             style: {
               color: '#FFFFFF',
               opacity: 1,
-              strokeActive: true,
+              strokeActive: false,
               shadowActive: false,
               strokeColor: '#000000',
               strokeWidth: 2,
@@ -313,18 +313,6 @@ export default function StudioPage() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
-
-      // สร้าง WebVTT blob และ inject เข้า video โดยตรง (ไม่ใช้ state = ไม่ re-render)
-      const vttContent = generateVtt(newSubtitles);
-      const blob = new Blob([vttContent], { type: 'text/vtt' });
-      const newVttUrl = URL.createObjectURL(blob);
-      
-      // revoke อันเก่า
-      if (vttUrlRef.current) URL.revokeObjectURL(vttUrlRef.current);
-      vttUrlRef.current = newVttUrl;
-
-      // inject track ด้วย DOM API โดยตรง — ไม่ให้ React จับ video
-      injectVttTrack(videoRef.current, newVttUrl);
 
       const vocabMsg = data.aiVocabApplied ? ' + AI Vocabulary' : '';
       const smartMsg = data.aiSmartApplied ? ` + AI แปล(${data.aiSmartLanguage || 'en'})` : '';
@@ -361,6 +349,89 @@ export default function StudioPage() {
     // Canvas overlay จะ re-render ทุก frame ผ่าน requestAnimationFrame
     // ไม่ต้อง inject VTT track อีกต่อไป
   }, []);
+
+  // ---- ถอดคำพูดเฉพาะ subtitle ที่เลือก (ช่วงเวลาที่เลือก) ----
+  const handleRetranscribeSelection = async () => {
+    const selectedId = store.selectedSubtitleId;
+    if (!selectedId) {
+      addToast('กรุณาเลือก subtitle ที่ต้องการถอดใหม่ก่อน', 'warning');
+      return;
+    }
+    if (!store.videoFile || !user) {
+      addToast('ไม่มีวิดีโอหรือไม่ได้เข้าสู่ระบบ', 'warning');
+      return;
+    }
+
+    const selectedSub = store.subtitles.find(s => s.id === selectedId);
+    if (!selectedSub) return;
+
+    // เลือก subtitle ที่ overlap กับช่วงนี้ (รวมก่อน/หลังเล็กน้อย)
+    const startTime = Math.max(0, selectedSub.start - 1);
+    const endTime = selectedSub.end + 1;
+
+    store.setIsProcessing(true);
+    store.setProcessingProgress(0);
+
+    try {
+      const result = await extractAudio(
+        store.videoFile,
+        {
+          targetSampleRate: 16000,
+          normalizeAudio: true,
+        },
+        (pct) => store.setProcessingProgress(pct)
+      );
+
+      const formData = new FormData();
+      formData.append('audio', result.blob, 'audio.wav');
+      formData.append('userId', user.id);
+      formData.append('projectTitle', store.videoFile.name);
+      formData.append('enableAiVocab', enableAiVocab ? 'true' : 'false');
+      formData.append('enableAiSmart', enableAiSmart ? 'true' : 'false');
+      formData.append('aiSmartLanguage', aiSmartLanguage);
+      formData.append('brandTerms', JSON.stringify(
+        brandTerms.split(',').map(s => s.trim()).filter(Boolean)
+      ));
+      // ✅ ส่ง time range ให้ backend รู้ว่าต้องถอดความเฉพาะช่วงนี้
+      formData.append('timeStart', String(startTime));
+      formData.append('timeEnd', String(endTime));
+
+      const response = await fetch(api('/api/transcribe-and-save'), {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        addToast(data.error || 'ถอดความไม่สำเร็จ', 'error');
+        return;
+      }
+
+      // แทนที่ subtitle ในช่วงเวลาที่เลือกด้วยของใหม่
+      const newSubs = data.subtitles.map((seg: any) => {
+        const id = seg.id;
+        if (seg.segments && seg.segments.length > 0) {
+          return { id, start: seg.start, end: seg.end, text: seg.text, segments: seg.segments, position: seg.position || 'bottom', y_offset: seg.y_offset ?? 90 };
+        }
+        return {
+          id, start: seg.start, end: seg.end, text: seg.text,
+          segments: [{ id: `${id}-seg-0`, text: seg.text, style: { color: '#FFFFFF', opacity: 1, strokeActive: false, shadowActive: false, strokeColor: '#000000', strokeWidth: 2, strokeOpacity: 1, shadowColor: '#000000', shadowOpacity: 0.5, shadowOffsetX: 0, shadowOffsetY: 2, shadowBlur: 4, shadowAngle: 0, fontWeight: 'normal' as const } }],
+          position: seg.position || 'bottom', y_offset: seg.y_offset ?? 90,
+        };
+      });
+
+      // ลบ subtitle เก่าที่ overlap
+      const kept = store.subtitles.filter(s => s.end < startTime || s.start > endTime);
+      store.setSubtitles([...kept, ...newSubs].sort((a, b) => a.start - b.start));
+
+      addToast(`ถอดคำพูดช่วงนี้ใหม่แล้ว! ${newSubs.length} รายการ`, 'success');
+    } catch (err: any) {
+      addToast(`เกิดข้อผิดพลาด: ${err.message}`, 'error');
+    } finally {
+      store.setIsProcessing(false);
+      store.setProcessingProgress(0);
+    }
+  };
 
   // ---- Export Video with Hardsub ----
   const handleExportVideo = async () => {
@@ -683,6 +754,14 @@ export default function StudioPage() {
               </div>
             ) : (
               <>
+                <div className="sticky top-0 z-10 bg-white border-b border-border px-3 py-2 flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={handleTranscribe} loading={store.isProcessing}>
+                    🔄 ถอดคำพูดอีกครั้ง
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleRetranscribeSelection}>
+                    ✂️ ถอดช่วงนี้อีกครั้ง
+                  </Button>
+                </div>
                 <div className="divide-y divide-border">
                   {store.subtitles.map((sub, i) => (
                     <SubtitleItem

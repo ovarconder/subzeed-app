@@ -14,6 +14,7 @@ interface SubtitleItemProps {
   onSelect: () => void;
   onUpdate: (updates: Partial<SubtitleEntry>) => void;
   onDelete: () => void;
+  onRetranscribeSelection?: (subId: string) => void;
 }
 
 // ── ใชสำหรับ preview หลาย segment ────────────────────────
@@ -369,7 +370,7 @@ function BoxStyleEditor({
 // ══════════════════════════════════════════════════════════
 
 export function SubtitleItem({
-  sub, index, isSelected, videoRef, onSelect, onUpdate, onDelete, fontFamily, fontSize,
+  sub, index, isSelected, videoRef, onSelect, onUpdate, onDelete, fontFamily, fontSize, onRetranscribeSelection,
 }: SubtitleItemProps) {
   const [showStyle, setShowStyle] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -525,6 +526,12 @@ export function SubtitleItem({
             onClick={(e) => { e.stopPropagation(); if (videoRef.current) { videoRef.current.currentTime = Math.max(0, sub.start - 2); videoRef.current.play(); } }}>
             Preview
           </button>
+          {onRetranscribeSelection && (
+            <button className="text-[10px] px-2 py-1 rounded bg-surface text-text-secondary hover:bg-amber-500 hover:text-white transition-colors"
+              onClick={(e) => { e.stopPropagation(); onRetranscribeSelection(sub.id); }}>
+              ✂️ ถอดใหม่
+            </button>
+          )}
           <button className="text-[10px] px-2 py-1 rounded bg-surface text-text-secondary hover:bg-red-500 hover:text-white transition-colors"
             onClick={(e) => { e.stopPropagation(); if (confirm('Delete?')) onDelete(); }}>
             Del

@@ -300,7 +300,16 @@ export default function StudioPage() {
         };
       });
 
-      store.setSubtitles(newSubtitles);
+      // ✅ ไล่ลบ strokeActive อีกครั้ง เผื่อ backend ส่ง segments ที่มี strokeActive = true มาด้วย
+      const cleaned = newSubtitles.map(sub => ({
+        ...sub,
+        segments: sub.segments?.map(seg => ({
+          ...seg,
+          style: { ...seg.style, strokeActive: false },
+        })),
+      }));
+
+      store.setSubtitles(cleaned);
       store.setCurrentProject({
         id: data.projectId,
         user_id: user.id,
@@ -420,9 +429,18 @@ export default function StudioPage() {
         };
       });
 
+      // ✅ ลบ strokeActive ที่ backend ส่งมา
+      const cleaned = newSubs.map((sub: SubtitleEntry) => ({
+        ...sub,
+        segments: sub.segments?.map(seg => ({
+          ...seg,
+          style: { ...seg.style, strokeActive: false },
+        })),
+      }));
+
       // ลบ subtitle เก่าที่ overlap
       const kept = store.subtitles.filter(s => s.end < startTime || s.start > endTime);
-      store.setSubtitles([...kept, ...newSubs].sort((a, b) => a.start - b.start));
+      store.setSubtitles([...kept, ...cleaned].sort((a: SubtitleEntry, b: SubtitleEntry) => a.start - b.start));
 
       addToast(`ถอดคำพูดช่วงนี้ใหม่แล้ว! ${newSubs.length} รายการ`, 'success');
     } catch (err: any) {
@@ -693,7 +711,7 @@ export default function StudioPage() {
                 {/* Only VTT fallback (ไม่ต้อง inject VTT แล้ว — ใช้ canvas แทน) */}
               </div>
             ) : (
-              <div className="text-center text-white/60">
+              <div className="text-center text-white/60 pt-12">
                 <p className="text-4xl mb-4">🎬</p>
                 <p>ลากวิดีโอมาวางหรือกดปุ่มเพื่อเลือกไฟล์</p>
               </div>
@@ -758,9 +776,6 @@ export default function StudioPage() {
                   <Button size="sm" variant="outline" onClick={handleTranscribe} loading={store.isProcessing}>
                     🔄 ถอดคำพูดอีกครั้ง
                   </Button>
-                  <Button size="sm" variant="outline" onClick={handleRetranscribeSelection}>
-                    ✂️ ถอดช่วงนี้อีกครั้ง
-                  </Button>
                 </div>
                 <div className="divide-y divide-border">
                   {store.subtitles.map((sub, i) => (
@@ -772,6 +787,10 @@ export default function StudioPage() {
                       videoRef={videoRef}
                       fontFamily={selectedFontFamily}
                       fontSize={selectedFontSize}
+                      onRetranscribeSelection={(subId) => {
+                        store.selectSubtitle(subId);
+                        handleRetranscribeSelection();
+                      }}
                       onSelect={() => {
                         store.selectSubtitle(sub.id);
                         if (videoRef.current) videoRef.current.currentTime = sub.start;

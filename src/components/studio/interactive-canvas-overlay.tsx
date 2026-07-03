@@ -674,6 +674,9 @@ export function InteractiveCanvasOverlay({
         canvasH = Math.round(contentH);
         canvas.width = canvasW * currentDpr;
         canvas.height = canvasH * currentDpr;
+        // ใช้ style.width/height + left/top เพื่อวาง canvas ตรง video content
+        canvas.style.width = `${canvasW}px`;
+        canvas.style.height = `${canvasH}px`;
         const videoRect = video.getBoundingClientRect();
         const parentRect = canvas.offsetParent!.getBoundingClientRect();
         canvas.style.left = `${videoRect.left - parentRect.left + (clientW - contentW) / 2}px`;

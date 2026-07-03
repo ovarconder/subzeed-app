@@ -86,6 +86,7 @@ export default function StudioPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasOverlayRef = useRef<HTMLCanvasElement>(null);
+  const interactiveCanvasRef = useRef<HTMLCanvasElement>(null);
   const vttUrlRef = useRef<string | null>(null);
 
   // ─── Fetch profile จาก `/api/profile` โดยตรง (ไม่พึ่ง useAuth cache) ──
@@ -697,10 +698,10 @@ export default function StudioPage() {
                   controls
                   className="max-w-full max-h-full object-contain"
                 />
-                {/* Canvas subtitle overlay — interactive */}
+                {/* Canvas subtitle overlay — static */}
                 <canvas
                   ref={canvasOverlayRef}
-                  className="absolute inset-0"
+                  className="absolute inset-0 pointer-events-none"
                 />
                 <SubtitleCanvasOverlay
                   videoRef={videoRef}
@@ -710,9 +711,13 @@ export default function StudioPage() {
                   tier={(p?.tier || 'free') as any}
                 />
                 {/* 🆕 Interactive Canvas — ลากย้าย Y, ดับเบิลคลิกแก้ไข, multi-segment (Premium+) */}
+                <canvas
+                  ref={interactiveCanvasRef}
+                  className="absolute inset-0"
+                />
                 <InteractiveCanvasOverlay
                   videoRef={videoRef}
-                  canvasRef={canvasOverlayRef}
+                  canvasRef={interactiveCanvasRef}
                   fontFamily={selectedFontFamily}
                   fontSize={selectedFontSize}
                   tier={(p?.tier || 'free') as any}

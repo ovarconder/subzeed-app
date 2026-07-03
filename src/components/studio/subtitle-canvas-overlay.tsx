@@ -73,29 +73,22 @@ export function SubtitleCanvasOverlay({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // flag กัน resize ซ้ำ — size ถูกล็อคครั้งแรกที่ mount
-    let sizeInitialized = false;
     let canvasW = 0;
     let canvasH = 0;
     let dpr = 1;
 
     const draw = () => {
-      // initialize canvas size แค่ครั้งเดียว (lock ไว้)
-      if (!sizeInitialized) {
-        const rect = video.getBoundingClientRect();
-        const w = Math.round(rect.width);
-        const h = Math.round(rect.height);
-        if (w > 0 && h > 0) {
-          dpr = window.devicePixelRatio || 1;
-          canvasW = w;
-          canvasH = h;
-          canvas.width = w * dpr;
-          canvas.height = h * dpr;
-          canvas.style.width = `${w}px`;
-          canvas.style.height = `${h}px`;
-          // อย่าลบ w-full h-full — ให้ Tailwind จัดการ layout
-          sizeInitialized = true;
-        }
+      // Canvas size: อ่านขนาดจริงจาก div parent ทุก frame
+      // canvas.style.width/height ไม่ set — ใช้ Tailwind w-full h-full แทน
+      const rect = video.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w > 0 && h > 0) {
+        dpr = window.devicePixelRatio || 1;
+        canvasW = w;
+        canvasH = h;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
       }
 
       if (canvasW === 0 || canvasH === 0) {

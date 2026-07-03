@@ -457,7 +457,6 @@ export function InteractiveCanvasOverlay({
   const subtitlesRef = useRef<SubtitleEntry[]>([]);
   const currentTimeRef = useRef<number>(0);
   const animFrameRef = useRef<number>(0);
-  const sizeInitializedRef = useRef(false);
 
   // ─── Drag state ─────────────────────────────────────────
   const dragRef = useRef<DragState>({
@@ -654,22 +653,18 @@ export function InteractiveCanvasOverlay({
     let dpr = 1;
 
     const draw = () => {
-      // Lock canvas size
-      if (!sizeInitializedRef.current) {
-        const rect = video.getBoundingClientRect();
-        const w = Math.round(rect.width);
-        const h = Math.round(rect.height);
-        if (w > 0 && h > 0) {
-          dpr = window.devicePixelRatio || 1;
-          canvasW = w;
-          canvasH = h;
-          canvas.width = w * dpr;
-          canvas.height = h * dpr;
-          canvas.style.width = `${w}px`;
-          canvas.style.height = `${h}px`;
-          // อย่าลบ w-full h-full — ให้ Tailwind จัดการ layout
-          sizeInitializedRef.current = true;
-        }
+      // Canvas size: อ่านขนาดจริงจาก div parent ทุก frame
+      // ไม่ lock — เผื่อ video resize หรือเปลี่ยน source
+      // canvas.style.width/height ไม่ set — ใช้ Tailwind w-full h-full แทน
+      const rect = video.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w > 0 && h > 0) {
+        dpr = window.devicePixelRatio || 1;
+        canvasW = w;
+        canvasH = h;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
       }
 
       if (canvasW === 0 || canvasH === 0) {

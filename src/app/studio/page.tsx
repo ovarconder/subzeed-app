@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { SubtitleItem } from '@/components/studio/subtitle-item';
 import { SubtitleSettingsBar } from '@/components/studio/subtitle-settings-bar';
 import { SubtitleCanvasOverlay } from '@/components/studio/subtitle-canvas-overlay';
+import { InteractiveCanvasOverlay } from '@/components/studio/interactive-canvas-overlay';
 import { renderVideoWithSubtitles, downloadVideoBlob, EXPORT_FORMATS, QUALITY_PRESETS, supportsHardwareAccel } from '@/lib/video-renderer';
 import type { ExportFormat, QualityPreset } from '@/lib/video-renderer';
 import { createClient } from '@/lib/supabase/client';
@@ -696,12 +697,20 @@ export default function StudioPage() {
                   controls
                   className="max-w-full max-h-full object-contain"
                 />
-                {/* Canvas subtitle overlay (WYSIWYG: multi-color, stroke, shadow, bg) */}
+                {/* Canvas subtitle overlay — interactive */}
                 <canvas
                   ref={canvasOverlayRef}
-                  className="absolute inset-0 pointer-events-none"
+                  className="absolute inset-0"
                 />
                 <SubtitleCanvasOverlay
+                  videoRef={videoRef}
+                  canvasRef={canvasOverlayRef}
+                  fontFamily={selectedFontFamily}
+                  fontSize={selectedFontSize}
+                  tier={(p?.tier || 'free') as any}
+                />
+                {/* 🆕 Interactive Canvas — ลากย้าย Y, ดับเบิลคลิกแก้ไข, multi-segment (Premium+) */}
+                <InteractiveCanvasOverlay
                   videoRef={videoRef}
                   canvasRef={canvasOverlayRef}
                   fontFamily={selectedFontFamily}

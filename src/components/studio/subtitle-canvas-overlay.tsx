@@ -78,8 +78,6 @@ export function SubtitleCanvasOverlay({
     let dpr = 1;
 
     const draw = () => {
-      // Canvas size: อ่านขนาดจริงจาก div parent ทุก frame
-      // canvas.style.width/height ไม่ set — ใช้ Tailwind w-full h-full แทน
       const rect = video.getBoundingClientRect();
       const w = Math.round(rect.width);
       const h = Math.round(rect.height);
@@ -89,6 +87,10 @@ export function SubtitleCanvasOverlay({
         canvasH = h;
         canvas.width = w * dpr;
         canvas.height = h * dpr;
+        // จัดตำแหน่ง canvas ให้ซ้อนทับ video ทุก frame
+        const parentRect = canvas.offsetParent!.getBoundingClientRect();
+        canvas.style.left = `${rect.left - parentRect.left}px`;
+        canvas.style.top = `${rect.top - parentRect.top}px`;
       }
 
       if (canvasW === 0 || canvasH === 0) {

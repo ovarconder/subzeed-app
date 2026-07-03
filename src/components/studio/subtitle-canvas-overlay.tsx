@@ -75,22 +75,34 @@ export function SubtitleCanvasOverlay({
 
     let canvasW = 0;
     let canvasH = 0;
-    let dpr = 1;
+    let currentDpr = 1;
 
     const draw = () => {
-      const rect = video.getBoundingClientRect();
-      const w = Math.round(rect.width);
-      const h = Math.round(rect.height);
-      if (w > 0 && h > 0) {
-        dpr = window.devicePixelRatio || 1;
-        canvasW = w;
-        canvasH = h;
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        // จัดตำแหน่ง canvas ให้ซ้อนทับ video ทุก frame
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const clientW = video.clientWidth;
+      const clientH = video.clientHeight;
+      if (vw > 0 && vh > 0 && clientW > 0 && clientH > 0) {
+        const contentAspect = vw / vh;
+        const containerAspect = clientW / clientH;
+        let contentW: number;
+        let contentH: number;
+        if (contentAspect > containerAspect) {
+          contentW = clientW;
+          contentH = clientW / contentAspect;
+        } else {
+          contentH = clientH;
+          contentW = clientH * contentAspect;
+        }
+        currentDpr = window.devicePixelRatio || 1;
+        canvasW = Math.round(contentW);
+        canvasH = Math.round(contentH);
+        canvas.width = canvasW * currentDpr;
+        canvas.height = canvasH * currentDpr;
+        const videoRect = video.getBoundingClientRect();
         const parentRect = canvas.offsetParent!.getBoundingClientRect();
-        canvas.style.left = `${rect.left - parentRect.left}px`;
-        canvas.style.top = `${rect.top - parentRect.top}px`;
+        canvas.style.left = `${videoRect.left - parentRect.left + (clientW - contentW) / 2}px`;
+        canvas.style.top = `${videoRect.top - parentRect.top + (clientH - contentH) / 2}px`;
       }
 
       if (canvasW === 0 || canvasH === 0) {
@@ -100,7 +112,7 @@ export function SubtitleCanvasOverlay({
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
 
       const activeSub = findActiveSubtitle();
 

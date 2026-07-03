@@ -667,7 +667,7 @@ export function InteractiveCanvasOverlay({
           canvas.height = h * dpr;
           canvas.style.width = `${w}px`;
           canvas.style.height = `${h}px`;
-          canvas.classList.remove('w-full', 'h-full');
+          // อย่าลบ w-full h-full — ให้ Tailwind จัดการ layout
           sizeInitializedRef.current = true;
         }
       }

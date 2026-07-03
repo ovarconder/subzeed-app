@@ -45,7 +45,6 @@ export function SubtitleCanvasOverlay({
   const subtitlesRef = useRef<SubtitleEntry[]>([]);
   const currentTimeRef = useRef<number>(0);
   const showWatermark = TIER_CONFIGS[tier].watermark;
-  const canvasReadyRef = useRef(false);
 
   // ─── Sync store → refs (ไม่ trigger re-render) ──────
   useEffect(() => {
@@ -57,29 +56,6 @@ export function SubtitleCanvasOverlay({
     currentTimeRef.current = useSubtitleStore.getState().currentTime;
     return () => { unsub(); };
   }, []);
-
-  // ─── ตั้งค่า canvas size ครั้งแรก (lock ไว้永不เปลี่ยน) ──
-  const initCanvasSize = useCallback(() => {
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    if (!canvas || !video) return false;
-
-    const rect = video.getBoundingClientRect();
-    const w = Math.round(rect.width);
-    const h = Math.round(rect.height);
-    if (w === 0 || h === 0) return false;
-
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    canvasReadyRef.current = true;
-
-    // remove style width/height ที่ Tailwind เซ็ทไว้ (ให้ inline style จัดการ)
-    canvas.classList.remove('w-full', 'h-full');
-    return true;
-  }, [canvasRef, videoRef]);
 
   // ─── Find active subtitle ──────────────────────────
   const findActiveSubtitle = useCallback((): SubtitleEntry | null => {
@@ -117,7 +93,7 @@ export function SubtitleCanvasOverlay({
           canvas.height = h * dpr;
           canvas.style.width = `${w}px`;
           canvas.style.height = `${h}px`;
-          canvas.classList.remove('w-full', 'h-full');
+          // อย่าลบ w-full h-full — ให้ Tailwind จัดการ layout
           sizeInitialized = true;
         }
       }

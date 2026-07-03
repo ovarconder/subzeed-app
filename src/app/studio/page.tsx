@@ -701,7 +701,7 @@ export default function StudioPage() {
                 {/* Canvas subtitle overlay — static */}
                 <canvas
                   ref={canvasOverlayRef}
-                  className="absolute inset-0 pointer-events-none"
+                  className="absolute inset-0 w-full h-full pointer-events-none"
                 />
                 <SubtitleCanvasOverlay
                   videoRef={videoRef}
@@ -713,7 +713,7 @@ export default function StudioPage() {
                 {/* 🆕 Interactive Canvas — ลากย้าย Y, ดับเบิลคลิกแก้ไข, multi-segment (Premium+) */}
                 <canvas
                   ref={interactiveCanvasRef}
-                  className="absolute inset-0"
+                  className="absolute inset-0 w-full h-full"
                 />
                 <InteractiveCanvasOverlay
                   videoRef={videoRef}

@@ -103,7 +103,7 @@ export function SubtitleSettingsBar({
           min={10}
           max={95}
           value={store.selectedSubtitleId
-            ? store.subtitles.find(s => s.id === store.selectedSubtitleId)?.y_offset ?? 90
+            ? store.subtitles.find(s => s.id === store.selectedSubtitleId)?.y_offset ?? 80
             : 90
           }
           onChange={(e) => {
@@ -117,7 +117,7 @@ export function SubtitleSettingsBar({
         />
         <span className="text-[10px] text-text-secondary w-6">
           {store.selectedSubtitleId
-            ? store.subtitles.find(s => s.id === store.selectedSubtitleId)?.y_offset ?? 90
+            ? store.subtitles.find(s => s.id === store.selectedSubtitleId)?.y_offset ?? 80
             : 90
           }%
         </span>

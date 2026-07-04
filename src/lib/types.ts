@@ -146,6 +146,8 @@ export interface TextSegmentStyle {
   fontWeight: FontWeight;
   /** ชื่อฟอนต์ (แยกจาก global fontFamily ของ subtitle) */
   fontFamily?: string;
+  /** ขนาดฟอนต์ (px) ถ้าไม่ระบุใช้ global fontSize */
+  fontSize?: number;
 }
 
 /** หนึ่ง segment ในบรรทัดข้อความ */

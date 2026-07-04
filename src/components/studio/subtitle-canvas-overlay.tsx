@@ -168,7 +168,7 @@ function drawSegments(
 
   for (const seg of segments) {
     const style = seg.style;
-    ctx.font = buildFontString(style.fontWeight, fontSize, fontFamily);
+    ctx.font = buildFontString(style, fontSize, fontFamily);
     const m = ctx.measureText(seg.text);
     metrics.push({ width: m.width, style, text: seg.text });
     totalWidth += m.width;
@@ -322,7 +322,22 @@ function drawWatermark(
 
 // ─── Helpers ───────────────────────────────────────────────
 
-function buildFontString(fontWeight: string, fontSize: number, fontFamily: string): string {
+function buildFontString(
+  fontWeight: string | TextSegmentStyle,
+  fontSize: number,
+  fontFamily: string
+): string {
+  if (typeof fontWeight === 'object' && fontWeight !== null) {
+    const st = fontWeight as TextSegmentStyle;
+    const ff = st.fontFamily || fontFamily;
+    const fs = st.fontSize || fontSize;
+    switch (st.fontWeight) {
+      case 'bold': return `bold ${fs}px ${ff}`;
+      case 'italic': return `italic ${fs}px ${ff}`;
+      case 'bold-italic': return `bold italic ${fs}px ${ff}`;
+      default: return `${fs}px ${ff}`;
+    }
+  }
   switch (fontWeight) {
     case 'bold':
       return `bold ${fontSize}px ${fontFamily}`;

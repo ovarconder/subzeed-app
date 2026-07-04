@@ -515,11 +515,11 @@ export function SubtitleItem({
             {showStyle ? 'Close Style' : 'Style'}
           </button>
           <button className="text-[10px] px-2 py-1 rounded bg-surface text-text-secondary hover:bg-primary hover:text-white transition-colors"
-            onClick={(e) => { e.stopPropagation(); const nY = Math.min(95, (sub.y_offset || 90) + 5); onUpdate({ y_offset: nY }); }}>
+            onClick={(e) => { e.stopPropagation(); const nY = Math.min(95, (sub.y_offset || 80) + 5); onUpdate({ y_offset: nY }); }}>
             Y+5
           </button>
           <button className="text-[10px] px-2 py-1 rounded bg-surface text-text-secondary hover:bg-primary hover:text-white transition-colors"
-            onClick={(e) => { e.stopPropagation(); const nY = Math.max(10, (sub.y_offset || 90) - 5); onUpdate({ y_offset: nY }); }}>
+            onClick={(e) => { e.stopPropagation(); const nY = Math.max(10, (sub.y_offset || 80) - 5); onUpdate({ y_offset: nY }); }}>
             Y-5
           </button>
           <button className="text-[10px] px-2 py-1 rounded bg-surface text-text-secondary hover:bg-red-500 hover:text-white transition-colors"

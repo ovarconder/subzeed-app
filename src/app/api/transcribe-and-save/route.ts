@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
           },
         }],
         position: 'bottom' as const,
-        y_offset: 90,
+        y_offset: 80,
       };
     });
 

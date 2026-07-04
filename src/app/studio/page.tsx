@@ -268,7 +268,7 @@ export default function StudioPage() {
             text: seg.text,
             segments: seg.segments,
             position: seg.position || 'bottom',
-            y_offset: seg.y_offset ?? 90,
+            y_offset: seg.y_offset ?? 80,
           };
         }
         // Fallback: สร้าง segments ปกติ
@@ -298,7 +298,7 @@ export default function StudioPage() {
             },
           }],
           position: seg.position || 'bottom',
-          y_offset: seg.y_offset ?? 90,
+          y_offset: seg.y_offset ?? 80,
         };
       });
 
@@ -422,12 +422,12 @@ export default function StudioPage() {
       const newSubs = data.subtitles.map((seg: any) => {
         const id = seg.id;
         if (seg.segments && seg.segments.length > 0) {
-          return { id, start: seg.start, end: seg.end, text: seg.text, segments: seg.segments, position: seg.position || 'bottom', y_offset: seg.y_offset ?? 90 };
+          return { id, start: seg.start, end: seg.end, text: seg.text, segments: seg.segments, position: seg.position || 'bottom', y_offset: seg.y_offset ?? 80 };
         }
         return {
           id, start: seg.start, end: seg.end, text: seg.text,
           segments: [{ id: `${id}-seg-0`, text: seg.text, style: { color: '#FFFFFF', opacity: 1, strokeActive: false, shadowActive: false, strokeColor: '#000000', strokeWidth: 2, strokeOpacity: 1, shadowColor: '#000000', shadowOpacity: 0.5, shadowOffsetX: 0, shadowOffsetY: 2, shadowBlur: 4, shadowAngle: 0, fontWeight: 'normal' as const } }],
-          position: seg.position || 'bottom', y_offset: seg.y_offset ?? 90,
+          position: seg.position || 'bottom', y_offset: seg.y_offset ?? 80,
         };
       });
 
@@ -455,7 +455,14 @@ export default function StudioPage() {
 
   // ---- Export Video with Hardsub ----
   const handleExportVideo = async () => {
-    if (!store.videoUrl || store.subtitles.length === 0) return;
+    if (!store.videoUrl) {
+      addToast('⚠️ ไม่มีวิดีโอในการส่งออก — กรุณาเลือกวิดีโอ', 'error');
+      return;
+    }
+    if (store.subtitles.length === 0) {
+      addToast('⚠️ ไม่มีซับไตเติลที่ต้องส่งออก', 'error');
+      return;
+    }
 
     setIsExporting(true);
     setExportProgress(0);
@@ -467,7 +474,7 @@ export default function StudioPage() {
         {
           fontFamily: selectedFontFamily,
           fontSize: selectedFontSize,
-          y_offset: 90,
+          y_offset: 80,
           format: exportFormat,
           position: 'bottom',
           quality: exportQuality,
@@ -481,9 +488,13 @@ export default function StudioPage() {
 
       const baseName = store.videoFile?.name?.replace(/\.[^.]+$/, '') || 'subzeed-video';
       downloadVideoBlob(blob, `${baseName}-subzeed.${exportFormat}`);
+      setIsExporting(false);
       addToast(`ดาวน์โหลดวิดีโอ (${exportFormat.toUpperCase()}) ที่ฝังซับแล้ว!`, 'success');
+      setExportProgress(0);
     } catch (err: any) {
       const msg = err.message || '';
+      setIsExporting(false);
+      setExportProgress(0);
       if (msg.includes('FFmpeg') || msg.includes('ffmpeg')) {
         addToast(`⚠️ FFmpeg โหลดไม่สำเร็จ — ลองรีเฟรชหน้าหรือเปลี่ยนอินเทอร์เน็ต`, 'error');
       } else if (msg.includes('HTTP') || msg.includes('fetch')) {
@@ -491,9 +502,6 @@ export default function StudioPage() {
       } else {
         addToast(`ส่งออกวิดีโอไม่สำเร็จ: ${msg.slice(0, 120)}`, 'error');
       }
-    } finally {
-      setIsExporting(false);
-      setExportProgress(0);
     }
   };
 
@@ -528,7 +536,7 @@ export default function StudioPage() {
         },
       }],
       position: 'bottom',
-      y_offset: 90,
+      y_offset: 80,
     };
     store.addSubtitle(newSub);
     setSubtitleText('');

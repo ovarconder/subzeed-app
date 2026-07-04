@@ -243,6 +243,32 @@ function InlineSubtitleEditor({
           />
         </div>
 
+        {/* Font Family */}
+        <div>
+        <label className="block text-[10px] text-text-secondary mb-0.5">ฟอนต์</label>
+        <select
+          value={activeSeg?.style.fontFamily || 'Arial'}
+          onChange={(e) => updateSegmentStyle(activeSegIdx, { fontFamily: e.target.value })}
+          className="w-full rounded border border-border px-1 py-1 text-[10px] bg-white"
+        >
+          <option value="Arial">Arial</option>
+          <option value="Arial Black">Arial Black</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Tahoma">Tahoma</option>
+          <option value="Trebuchet MS">Trebuchet MS</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Garamond">Garamond</option>
+          <option value="Courier New">Courier New</option>
+          <option value="Brush Script MT">Brush Script MT</option>
+          <option value="Impact">Impact</option>
+          <option value="Comic Sans MS">Comic Sans MS</option>
+          <option value="Kanit">Kanit</option>
+          <option value="Sarabun">Sarabun</option>
+          <option value="Noto Sans Thai">Noto Sans Thai</option>
+        </select>
+        </div>
+
         {/* Font Weight */}
         <div>
           <label className="block text-[10px] text-text-secondary mb-0.5">น้ำหนัก</label>
@@ -581,11 +607,16 @@ export function InteractiveCanvasOverlay({
       const newOffset = Math.max(5, Math.min(95, drag.startYOffset + deltaPercent));
       const roundedOffset = Math.round(newOffset);
 
-      // 🧲 Magnet snap: ถ้าใกล้ guideline ให้ snap
+      // 🧲 Magnet snap: ถ้าใกล้ guideline ให้ snap ที่ center ของ subtitle
+      // โดย center = y_offset + (half of bgHeight in %)
+      // bgHeight ≈ fontSize * 1.4 + paddingY*2 ≈ fontSize * 2
+      const halfBgPct = ((fontSize * 2) / canvasH / 2) * 100; // half bg height in percent
       let snapped = roundedOffset;
       for (const mp of MAGNET_POINTS) {
-        if (Math.abs(roundedOffset - mp) <= SNAP_TOLERANCE) {
-          snapped = Math.round(mp);
+        // snap เมื่อ center ของ subtitle (= y_offset + halfBgPct) ใกล้ guideline
+        const center = roundedOffset + halfBgPct;
+        if (Math.abs(center - mp) <= SNAP_TOLERANCE) {
+          snapped = Math.round(mp - halfBgPct);
           break;
         }
       }
@@ -711,20 +742,21 @@ export function InteractiveCanvasOverlay({
       ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
 
       // ═══════════════════════════════════════════════════
-      // 🎯 Guideline แบ่ง 8 ส่วน (เส้นประจางๆ)
+      // 🎯 Guideline แบ่ง 8 ส่วน (เส้นประ)
       // ═══════════════════════════════════════════════════
       for (let i = 1; i < 8; i++) {
         const y = canvasH * (i / 8);
+        const isHalf = i === 4; // เส้น 50% เข้มกว่า
         ctx.save();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = isHalf ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = isHalf ? 2 : 1;
         ctx.setLineDash([4, 8]);
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(canvasW, y);
         ctx.stroke();
-        // แสดง % label ข้างซ้าย
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+        // Label
+        ctx.fillStyle = isHalf ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.35)';
         ctx.font = '10px Arial';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'bottom';
@@ -797,7 +829,7 @@ function drawSegments(
 
   for (const seg of segments) {
     const style = seg.style;
-    ctx.font = buildFontString(style.fontWeight, fontSize, fontFamily);
+    ctx.font = buildFontString(style, fontSize, fontFamily);
     const m = ctx.measureText(seg.text);
     metrics.push({ width: m.width, style, text: seg.text });
     totalWidth += m.width;
@@ -873,7 +905,7 @@ function drawSegments(
     ) {
       ctx.save();
       ctx.globalAlpha = st.shadowOpacity;
-      ctx.font = buildFontString(st.fontWeight, fontSize, fontFamily);
+      ctx.font = buildFontString(st, fontSize, fontFamily);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.shadowColor = st.shadowColor;
@@ -889,7 +921,7 @@ function drawSegments(
     if (st.strokeActive && st.strokeWidth > 0 && st.strokeOpacity > 0) {
       ctx.save();
       ctx.globalAlpha = st.strokeOpacity;
-      ctx.font = buildFontString(st.fontWeight, fontSize, fontFamily);
+      ctx.font = buildFontString(st, fontSize, fontFamily);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.strokeStyle = st.strokeColor;
@@ -903,7 +935,7 @@ function drawSegments(
     // Fill
     ctx.save();
     ctx.globalAlpha = st.opacity;
-    ctx.font = buildFontString(st.fontWeight, fontSize, fontFamily);
+    ctx.font = buildFontString(st, fontSize, fontFamily);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = st.color;
@@ -938,7 +970,22 @@ function drawWatermark(ctx: CanvasRenderingContext2D, actualW: number, actualH: 
   ctx.restore();
 }
 
-function buildFontString(fontWeight: string, fontSize: number, fontFamily: string): string {
+function buildFontString(
+  fontWeight: string | TextSegmentStyle,
+  fontSize: number,
+  fontFamily: string
+): string {
+  // ถ้า fontWeight เป็น object (pass-through style) ให้ดึง fontFamily จากนั้น
+  if (typeof fontWeight === 'object' && fontWeight !== null) {
+    const st = fontWeight as TextSegmentStyle;
+    const ff = st.fontFamily || fontFamily;
+    switch (st.fontWeight) {
+      case 'bold': return `bold ${fontSize}px ${ff}`;
+      case 'italic': return `italic ${fontSize}px ${ff}`;
+      case 'bold-italic': return `bold italic ${fontSize}px ${ff}`;
+      default: return `${fontSize}px ${ff}`;
+    }
+  }
   switch (fontWeight) {
     case 'bold':
       return `bold ${fontSize}px ${fontFamily}`;

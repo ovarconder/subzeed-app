@@ -144,6 +144,8 @@ export interface TextSegmentStyle {
   shadowAngle: number;
   /** รูปแบบตัวหนา/เอียง */
   fontWeight: FontWeight;
+  /** ชื่อฟอนต์ (แยกจาก global fontFamily ของ subtitle) */
+  fontFamily?: string;
 }
 
 /** หนึ่ง segment ในบรรทัดข้อความ */

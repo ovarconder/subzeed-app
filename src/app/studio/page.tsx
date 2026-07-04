@@ -697,6 +697,7 @@ export default function StudioPage() {
                   src={store.videoUrl}
                   controls
                   className="max-w-full max-h-full object-contain"
+                  style={{ pointerEvents: 'auto' }}
                 />
                 {/* Canvas subtitle overlay — static */}
                 <canvas
@@ -714,6 +715,7 @@ export default function StudioPage() {
                 <canvas
                   ref={interactiveCanvasRef}
                   className="absolute"
+                  style={{ pointerEvents: 'none' }}
                 />
                 <InteractiveCanvasOverlay
                   videoRef={videoRef}

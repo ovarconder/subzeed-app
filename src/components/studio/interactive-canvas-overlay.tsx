@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import type {
   SubtitleEntry,
   TextSegment,
@@ -72,6 +72,7 @@ function InlineSubtitleEditor({
   // Segment ที่กำลัง active (สำหรับเปลี่ยน style)
   const [activeSegIdx, setActiveSegIdx] = useState<number>(0);
   const editorRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // ─── Sync กลับไป store ─────────────────────────────────
   const syncToStore = useCallback(
@@ -191,13 +192,19 @@ function InlineSubtitleEditor({
         {isPremiumOrUp && (
           <button
             onClick={() => {
-              // แยก segment ตรง cursor (ถ้ายังไม่ได้ split)
-              // ใช้ prompt ง่ายๆ ขอให้ user บอกตำแหน่ง
-              const pos = prompt('แบ่งที่ตำแหน่งตัวอักษรที่ (ตัวที่เท่าไหร่)?', '5');
-              if (pos) splitSegment(activeSegIdx, parseInt(pos, 10));
+              // แยก segment โดยใช้ cursor position ใน textarea
+              const ta = textareaRef.current;
+              if (ta) {
+                const pos = ta.selectionStart;
+                if (pos > 0 && pos < ta.value.length) {
+                  splitSegment(activeSegIdx, pos);
+                } else {
+                  alert('วางเคอร์เซอร์ในข้อความตรงตำแหน่งที่ต้องการแบ่ง');
+                }
+              }
             }}
             className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-text-secondary/40 text-text-secondary hover:bg-border"
-            title="แยก segment (Premium+)"
+            title="วางเคอร์เซอร์ในข้อความตรงจุดที่ต้องการแบ่งแล้วคลิก (Premium+)"
           >
             + แยก
           </button>
@@ -215,6 +222,7 @@ function InlineSubtitleEditor({
 
       {/* ─── Text input ──────────────────────────────── */}
       <textarea
+        ref={textareaRef}
         value={activeSeg?.text || ''}
         onChange={(e) => updateSegmentText(activeSegIdx, e.target.value)}
         className="w-full rounded border border-border px-2 py-1 text-sm mb-2 resize-none"
@@ -529,9 +537,8 @@ export function InteractiveCanvasOverlay({
 
   const handlePointerDown = useCallback(
     (e: PointerEvent) => {
-      const canvas = canvasRef.current;
       const video = videoRef.current;
-      if (!canvas || !video) return;
+      if (!video) return;
 
       const rect = video.getBoundingClientRect();
       const px = e.clientX - rect.left;
@@ -549,10 +556,13 @@ export function InteractiveCanvasOverlay({
         startYOffset: sub.y_offset ?? 90,
       };
 
-      canvas.setPointerCapture(e.pointerId);
+      video.setPointerCapture(e.pointerId);
     },
-    [canvasRef, videoRef, findSubtitleAtPoint]
+    [videoRef, findSubtitleAtPoint]
   );
+
+  const SNAP_TOLERANCE = 3; // % tolerance
+  const MAGNET_POINTS = [12.5, 25, 37.5, 50, 62.5, 75, 87.5];
 
   const handlePointerMove = useCallback(
     (e: PointerEvent) => {
@@ -571,9 +581,18 @@ export function InteractiveCanvasOverlay({
       const newOffset = Math.max(5, Math.min(95, drag.startYOffset + deltaPercent));
       const roundedOffset = Math.round(newOffset);
 
+      // 🧲 Magnet snap: ถ้าใกล้ guideline ให้ snap
+      let snapped = roundedOffset;
+      for (const mp of MAGNET_POINTS) {
+        if (Math.abs(roundedOffset - mp) <= SNAP_TOLERANCE) {
+          snapped = Math.round(mp);
+          break;
+        }
+      }
+
       // อัปเดต store โดยตรง
       const store = useSubtitleStore.getState();
-      store.updateSubtitle(drag.subId, { y_offset: roundedOffset });
+      store.updateSubtitle(drag.subId, { y_offset: snapped });
     },
     [videoRef]
   );
@@ -613,30 +632,30 @@ export function InteractiveCanvasOverlay({
     [canvasRef, videoRef, findSubtitleAtPoint]
   );
 
-  // ─── Register event listeners ──────────────────────────
+  // ─── Register event listeners บน video (เพราะ canvas มี pointer-events: none) ──
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const video = videoRef.current;
+    if (!video) return;
 
-    canvas.addEventListener('pointerdown', handlePointerDown);
-    canvas.addEventListener('pointermove', handlePointerMove);
-    canvas.addEventListener('pointerup', handlePointerUp);
-    canvas.addEventListener('pointercancel', handlePointerUp);
-    canvas.addEventListener('dblclick', handleDoubleClick);
+    video.addEventListener('pointerdown', handlePointerDown);
+    video.addEventListener('pointermove', handlePointerMove);
+    video.addEventListener('pointerup', handlePointerUp);
+    video.addEventListener('pointercancel', handlePointerUp);
+    video.addEventListener('dblclick', handleDoubleClick);
 
     // ป้องกัน context menu
     const preventCtx = (e: Event) => e.preventDefault();
-    canvas.addEventListener('contextmenu', preventCtx);
+    video.addEventListener('contextmenu', preventCtx);
 
     return () => {
-      canvas.removeEventListener('pointerdown', handlePointerDown);
-      canvas.removeEventListener('pointermove', handlePointerMove);
-      canvas.removeEventListener('pointerup', handlePointerUp);
-      canvas.removeEventListener('pointercancel', handlePointerUp);
-      canvas.removeEventListener('dblclick', handleDoubleClick);
-      canvas.removeEventListener('contextmenu', preventCtx);
+      video.removeEventListener('pointerdown', handlePointerDown);
+      video.removeEventListener('pointermove', handlePointerMove);
+      video.removeEventListener('pointerup', handlePointerUp);
+      video.removeEventListener('pointercancel', handlePointerUp);
+      video.removeEventListener('dblclick', handleDoubleClick);
+      video.removeEventListener('contextmenu', preventCtx);
     };
-  }, [canvasRef, handlePointerDown, handlePointerMove, handlePointerUp, handleDoubleClick]);
+  }, [videoRef, handlePointerDown, handlePointerMove, handlePointerUp, handleDoubleClick]);
 
   // ─── Canvas render loop ───────────────────────────────
   useEffect(() => {
@@ -691,7 +710,28 @@ export function InteractiveCanvasOverlay({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(currentDpr, 0, 0, currentDpr, 0, 0);
 
-      // ❌ ไม่วาด subtitle/watermark — SubtitleCanvasOverlay จัดการให้ (pointer-events-none)
+      // ═══════════════════════════════════════════════════
+      // 🎯 Guideline แบ่ง 8 ส่วน (เส้นประจางๆ)
+      // ═══════════════════════════════════════════════════
+      for (let i = 1; i < 8; i++) {
+        const y = canvasH * (i / 8);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 8]);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvasW, y);
+        ctx.stroke();
+        // แสดง % label ข้างซ้าย
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`${Math.round((i / 8) * 100)}%`, 4, y - 2);
+        ctx.restore();
+      }
+
       // ✅ วาดเฉพาะ drag indicator อย่างเดียว
 
       // ─── วาด cursor indicator ถ้ากำลังลาก ─────────

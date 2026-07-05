@@ -79,6 +79,7 @@ declare global {
 function injectCoreScript(blobUrl: string): HTMLScriptElement {
   const script = document.createElement('script');
   script.src = blobUrl;
+  script.type = 'module';
   script.onload = () => {
     coreScriptLoaded = true;
     coreScriptResolve?.();

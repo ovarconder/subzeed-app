@@ -460,6 +460,14 @@ export default function StudioPage() {
 
   // ---- Export Video with Hardsub ----
   const handleExportVideo = async () => {
+    console.log('[Export] handleExportVideo CLICKED', {
+      videoUrl: store.videoUrl?.slice(0, 60),
+      hasVideoUrl: !!store.videoUrl,
+      subtitleCount: store.subtitles.length,
+      isExporting,
+      exportFormat,
+    });
+
     if (!store.videoUrl) {
       addToast('⚠️ ไม่มีวิดีโอในการส่งออก — กรุณาเลือกวิดีโอ', 'error');
       return;

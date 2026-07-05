@@ -56,7 +56,7 @@ let ffmpegInstance: any = null;
 let ffmpegLoaded = false;
 let ffmpegLoadError: string | null = null;
 
-const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
 
 // สัญญาณบอกว่า createFFmpegCore ถูก global script โหลดเสร็จ
 let coreScriptLoaded = false;
@@ -79,7 +79,7 @@ declare global {
 function injectCoreScript(blobUrl: string): HTMLScriptElement {
   const script = document.createElement('script');
   script.src = blobUrl;
-  script.type = 'module';
+  // UMD build — ใช้ classic script (ไม่ type=module)
   script.onload = () => {
     coreScriptLoaded = true;
     coreScriptResolve?.();

@@ -865,7 +865,7 @@ export function InteractiveCanvasOverlay({
           fontSize,
           activeSub.y_offset ?? 80,
           activeSub.position || 'bottom',
-          undefined // displayStyle — ใช้ default
+          activeSub.displayStyle // displayStyle จาก store
         );
       }
 

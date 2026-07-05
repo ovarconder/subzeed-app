@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
     (route) => relativePath === route || relativePath.startsWith(route + '/')
   );
 
-  if (isPublicRoute || relativePath === '/') {
+  if (isPublicRoute || relativePath === '/' || relativePath === '/ffmpeg-core.js' || relativePath === '/ffmpeg-core.wasm') {
     return NextResponse.next();
   }
 
@@ -81,6 +81,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|ffmpeg-core\\.(js|wasm)$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
 

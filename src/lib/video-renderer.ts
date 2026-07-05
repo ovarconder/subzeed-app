@@ -73,8 +73,10 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = {
 };
 
 // ─── FFmpeg Singleton ──────────────────────────────────
-// โฮสต์ ffmpeg-core.js + ffmpeg-core.wasm ใน public/ เพื่อเลี่ยง
-// CDN/CORS/basePath issues ใน production (Vercel)
+// ใช้ toBlobURL เพื่อโหลด ffmpeg-core จาก local path
+// (เลี่ยง Web Worker path resolution issues กับ basePath)
+
+import { toBlobURL } from '@ffmpeg/util';
 
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoaded = false;
@@ -82,9 +84,7 @@ let ffmpegLoadError: string | null = null;
 
 function getFFmpegCoreBase(): string {
   if (typeof window === 'undefined') return '/';
-  // ใช้ location เพื่อหา basePath เช่น /subzeed/
   const path = window.location.pathname;
-  // ถ้า path ขึ้นต้นด้วย /subzeed/ ให้ใช้ /subzeed/ffmpeg-core
   const baseParts = path.split('/').filter(Boolean);
   if (baseParts.length > 0 && baseParts[0] !== 'api') {
     return `/${baseParts[0]}/ffmpeg-core`;
@@ -106,12 +106,17 @@ async function getFFmpeg(): Promise<FFmpeg> {
 
   try {
     const coreBase = getFFmpegCoreBase();
+    console.log('[ffmpeg] Loading from:', coreBase);
+    
+    const coreBlobURL = await toBlobURL(`${coreBase}.js`, 'text/javascript');
+    const wasmBlobURL = await toBlobURL(`${coreBase}.wasm`, 'application/wasm');
+    
     await ffmpeg.load({
-      coreURL: `${coreBase}.js`,
-      wasmURL: `${coreBase}.wasm`,
+      coreURL: coreBlobURL,
+      wasmURL: wasmBlobURL,
     });
     ffmpegLoaded = true;
-    console.log('[ffmpeg] Loaded from local:', coreBase);
+    console.log('[ffmpeg] Loaded successfully');
     return ffmpeg;
   } catch (err) {
     ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';

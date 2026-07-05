@@ -38,22 +38,20 @@ export function useVideoStorage() {
         // บันทึกไฟล์ลง IndexedDB
         await saveVideoLocally(projectId, file);
 
-        // สร้าง Object URL ใหม่
+        // สร้าง Object URL ใหม่เพียงอันเดียว
         const url = URL.createObjectURL(file);
         urlRef.current = url;
 
-        // อัปเดต store
-        store.setVideoFile(file);
-        // setVideoUrl จะถูกตั้งจาก store.setVideoFile อยู่แล้ว
-        // แต่ถ้าต้องการ force ให้ sync:
+        // อัปเดต store ด้วย Object URL เดียวกัน — ไม่เรียก setVideoFile เพราะจะสร้าง URL ซ้ำ
         store.setVideoUrl(url);
-
+        store.setVideoFile(file); // หลังจาก setVideoUrl เพื่อให้ videoUrl ไม่ถูกทับ
         return url;
       } catch (err) {
         console.error('[useVideoStorage] Failed to store video:', err);
         // fallback: ใช้ Object URL เฉย ๆ โดยไม่เก็บ IndexedDB
         const url = URL.createObjectURL(file);
         urlRef.current = url;
+        store.setVideoUrl(url);
         store.setVideoFile(file);
         return url;
       }
@@ -117,3 +115,4 @@ export function useVideoStorage() {
 
   return { storeVideo, loadVideo, removeVideo };
 }
+

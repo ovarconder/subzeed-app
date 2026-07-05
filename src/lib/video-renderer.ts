@@ -79,7 +79,7 @@ let ffmpeg: FFmpeg | null = null;
 let ffmpegLoaded = false;
 let ffmpegLoadError: string | null = null;
 
-const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.15/dist/esm';
 
 async function getFFmpeg(): Promise<FFmpeg> {
   if (ffmpegLoaded && ffmpeg) return ffmpeg;

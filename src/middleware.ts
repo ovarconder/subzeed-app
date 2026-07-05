@@ -34,8 +34,9 @@ export async function middleware(request: NextRequest) {
     (route) => relativePath === route || relativePath.startsWith(route + '/')
   );
 
-  // Static files that should bypass auth check
-  const staticFiles = ['/ffmpeg-core.js', '/ffmpeg-core.wasm', '/worker.js'];
+    // Static files that should bypass auth check
+  const staticFiles: string[] = [];
+
   if (isPublicRoute || relativePath === '/' || staticFiles.includes(relativePath)) {
     return NextResponse.next();
   }

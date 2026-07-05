@@ -97,26 +97,21 @@ async function ensureFFmpegLoaded(): Promise<any> {
   if (ffmpegLoadError) throw new Error(`FFmpeg โหลดไม่สำเร็จ (ก่อนหน้า): ${ffmpegLoadError}`);
 
   try {
-    // 1. โหลด core.js เป็น blob URL
-    console.log('[ffmpeg] Fetching core.js...');
-    const coreResp = await fetch(`${FFMPEG_BASE}/ffmpeg-core.js`);
-    const coreJs = await coreResp.text();
-    const coreBlob = new Blob([coreJs], { type: 'text/javascript' });
-    const coreBlobURL = URL.createObjectURL(coreBlob);
-    
-    // 2. โหลด wasm เป็น blob URL
+    // 1. โหลด wasm เป็น blob URL ก่อน (ใช้เอง)
     console.log('[ffmpeg] Fetching wasm...');
     const wasmResp = await fetch(`${FFMPEG_BASE}/ffmpeg-core.wasm`);
     const wasmBuffer = await wasmResp.arrayBuffer();
     const wasmBlob = new Blob([wasmBuffer], { type: 'application/wasm' });
     const wasmBlobURL = URL.createObjectURL(wasmBlob);
     
-    // 3. Inject core.js ผ่าน <script> (เลี่ยง dynamic import ที่ webpack ไม่ support)
+    // 2. Inject core.js ผ่าน <script> (ใช้ CDN URL โดยตรงไม่ผ่าน blob)
+    //    เพื่อให้ UMD build หา .wasm จาก path สัมพัทธ์กับ core.js ได้
     console.log('[ffmpeg] Injecting core script...');
+    const coreBlobURL = `${FFMPEG_BASE}/ffmpeg-core.js`;
     injectCoreScript(coreBlobURL);
     await waitForCoreScript();
     
-    // 4. เรียก createFFmpegCore()
+    // 3. เรียก createFFmpegCore()
     if (!window.createFFmpegCore) {
       throw new Error('createFFmpegCore ไม่ถูกโหลด');
     }
@@ -124,8 +119,9 @@ async function ensureFFmpegLoaded(): Promise<any> {
     console.log('[ffmpeg] Creating FFmpeg instance...');
     ffmpegInstance = await window.createFFmpegCore({
       locateFile: (path: string) => {
+        // .wasm จะถูกหาโดยสัมพัทธ์กับ core.js (CDN path) — ใช้ blob แทน
         if (path.endsWith('.wasm')) return wasmBlobURL;
-        return path;
+        return `${FFMPEG_BASE}/${path}`;
       },
     });
     

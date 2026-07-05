@@ -120,6 +120,50 @@
 
 ---
 
+## 🖱️ Inline Editor: Drag-to-move + Editor Font Size (2026-07-04)
+
+### ปัญหา
+- Inline editor popup ถูกสร้างที่ตำแหน่งคลิก และไม่สามารถขยับได้
+- ถ้า popup เกิดใกล้ขอบจอ อาจถูกตัดหรือซ้อนทับ element ที่ต้องการ
+- ขนาดตัวอักษรใน textarea ของ editor คงที่ ปรับไม่ได้
+
+### ไฟล์ที่เกี่ยวข้อง
+- `src/components/studio/interactive-canvas-overlay.tsx`
+
+### การเปลี่ยนแปลง
+
+1. **Drag-to-move popup**:
+   - เพิ่ม `pos` state (`useState({ x, y })`) แทนการใช้ prop `x`, `y` โดยตรง
+   - เพิ่ม drag handle bar (3 เส้นแนวนอน) ที่ด้านบนของ popup
+   - `onDragBarMouseDown` → เริ่ม drag
+   - `mousemove` event → อัปเดต `pos.x`/`pos.y`
+   - `mouseup` event → หยุด drag
+   - ปรับ `style={{ left, top }}` ใช้ `pos.x`/`pos.y`
+
+2. **Editor Font Size Slider**:
+   - เพิ่ม `editorFontSize` state (ค่าเริ่มต้น 14px)
+   - Slider ปรับค่าตั้งแต่ 10px–28px ใน inline editor
+   - แสดงค่าปัจจุบันแบบ real-time
+   - ส่ง `editorFontSize` ไปที่ `textarea.style.fontSize`
+
+3. **Structure change**: `p-3` → `px-3 pb-3` + drag handle bar
+   - ย้าย `p-3` จาก outer div ไปเป็น `px-3 pb-3` div ด้านใน
+   - Drag handle bar อยู่นอก `px-3 pb-3` เพื่อให้มีพื้นที่ลากโดยไม่เลื่อน content
+
+4. **Fix: fontSize prop missing**:
+   - `InlineEditorProps` interface ไม่มี `fontSize` field แต่ JSX อ้างถึง `fontSize` (จาก `activeSeg?.style.fontSize || fontSize`)
+   - Error: `Cannot find name 'fontSize'`
+   - แก้: เพิ่ม `fontSize: number` ใน `InlineEditorProps`
+   - Destructure เป็น `fallbackFontSize` เพื่อไม่ให้ชนกับตัวแปรอื่น
+   - ส่ง `fontSize={fontSize}` จาก `InteractiveCanvasOverlay` → `<InlineSubtitleEditor>`
+
+### Lessons Learned
+- **Indent มีผลต่อ TSX parser**: children ที่มี indent เท่ากับ parent ทำให้ TS parser ตีความผิดว่า parent เป็น self-closing — เกิด cascade error ตั้งแต่ `<div>` ที่ return จนถึง `export interface`
+- **`x`/`y` reuse**: ตัวแปร `x` และ `y` เดิมถูกใช้ใน `InlineSubtitleEditor` props และใน callback ภายใน (`textarea.selectionStart` ใช้ `pos`) — ควร rename ให้ชัดเจน
+- **TypeScript version impact**: TS 5.9.x ไม่มีปัญหาเฉพาะ แต่การใช้ single-file check (`tsc file.tsx`) จะไม่ใช้ tsconfig → ต้องรันแบบ project-wide (`tsc --noEmit`)
+
+---
+
 ## 📐 Canvas Sizing & DPR (History)
 
 - `bbbdccf`: ใช้ `video.videoWidth/videoHeight` แทน `getBoundingClientRect` — แก้ปัญหาจอ retina

@@ -339,6 +339,11 @@ export default function StudioPage() {
   // ---- Save Project ----
   const handleSave = async () => {
     if (!user) return;
+    console.log('[Studio] Saving project...', {
+      userId: user.id,
+      title: store.videoFile?.name || 'วิดีโอไม่มีชื่อ',
+      subtitleCount: store.subtitles.length,
+    });
     const { error } = await supabase.from('projects').insert({
       user_id: user.id,
       title: store.videoFile?.name || 'วิดีโอไม่มีชื่อ',
@@ -348,8 +353,10 @@ export default function StudioPage() {
     });
 
     if (error) {
-      addToast('บันทึกไม่สำเร็จ', 'error');
+      console.error('[Studio] Save failed:', { message: error.message, details: error.details, hint: error.hint, code: error.code });
+      addToast(`บันทึกไม่สำเร็จ: ${error.message}`, 'error');
     } else {
+      console.log('[Studio] Save successful!');
       addToast('บันทึกโปรเจกต์สำเร็จ', 'success');
       router.push('/dashboard');
     }

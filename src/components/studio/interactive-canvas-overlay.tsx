@@ -35,16 +35,19 @@ interface InlineEditorProps {
   width: number;
   /** tier สำหรับเช็คสิทธิ์ multi-segment */
   tier: SubscriptionTier;
+  /** ขนาดฟอนต์หลัก (fallback) */
+  fontSize: number;
   /** callback ปิด editor */
   onClose: () => void;
 }
 
 function InlineSubtitleEditor({
   sub,
-  x,
-  y,
+  x: initialX,
+  y: initialY,
   width,
   tier,
+  fontSize: fallbackFontSize,
   onClose,
 }: InlineEditorProps) {
   const isPremiumOrUp =
@@ -71,6 +74,46 @@ function InlineSubtitleEditor({
 
   // Segment ที่กำลัง active (สำหรับเปลี่ยน style)
   const [activeSegIdx, setActiveSegIdx] = useState<number>(0);
+
+  // ─── Editor font size state ────────────────────────────
+  const [editorFontSize, setEditorFontSize] = useState(14); // ขนาด font ของกล่อง editor
+
+  // ─── Drag-to-move popup ────────────────────────────────
+  const [pos, setPos] = useState({ x: initialX, y: initialY });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0, startPos: { x: 0, y: 0 } });
+  const dragHandleRef = useRef<HTMLDivElement>(null);
+
+  const onDragBarMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingRef.current = true;
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      startPos: { ...pos },
+    };
+  }, [pos]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setPos({
+        x: dragStartRef.current.startPos.x + dx,
+        y: dragStartRef.current.startPos.y + dy,
+      });
+    };
+    const handleMouseUp = () => { isDraggingRef.current = false; };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   const editorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -167,290 +210,341 @@ function InlineSubtitleEditor({
   return (
     <div
       ref={editorRef}
-      className="fixed z-50 bg-white rounded-lg shadow-xl border border-border p-3"
+      className="fixed z-50 bg-white rounded-lg shadow-xl border border-border"
       style={{
-        left: Math.max(10, Math.min(x, window.innerWidth - width - 20)),
-        top: Math.max(10, y - 180),
+        left: Math.max(10, Math.min(pos.x, window.innerWidth - width - 20)),
+        top: Math.max(10, pos.y - 180),
         width: Math.min(width + 40, window.innerWidth - 40),
       }}
     >
-      {/* ─── Header: ช่วง segment ───────────────────── */}
-      <div className="flex items-center gap-1 mb-2 flex-wrap">
-        {segments.map((seg, idx) => (
-          <button
-            key={seg.id}
-            onClick={() => setActiveSegIdx(idx)}
-            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-              idx === activeSegIdx
-                ? 'bg-primary text-white border-primary'
-                : 'bg-surface text-text-secondary border-border hover:bg-border'
-            }`}
-          >
-            seg {idx + 1}
-          </button>
-        ))}
-        {isPremiumOrUp && (
-          <button
-            onClick={() => {
-              // แยก segment โดยใช้ cursor position ใน textarea
-              const ta = textareaRef.current;
-              if (ta) {
-                const pos = ta.selectionStart;
-                if (pos > 0 && pos < ta.value.length) {
-                  splitSegment(activeSegIdx, pos);
-                } else {
-                  alert('วางเคอร์เซอร์ในข้อความตรงตำแหน่งที่ต้องการแบ่ง');
-                }
-              }
-            }}
-            className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-text-secondary/40 text-text-secondary hover:bg-border"
-            title="วางเคอร์เซอร์ในข้อความตรงจุดที่ต้องการแบ่งแล้วคลิก (Premium+)"
-          >
-            + แยก
-          </button>
-        )}
-        {isPremiumOrUp && segments.length > 1 && activeSegIdx > 0 && (
-          <button
-            onClick={() => mergeSegments(activeSegIdx - 1)}
-            className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-text-secondary/40 text-text-secondary hover:bg-border"
-            title="รวม segment นี้กับอันก่อน"
-          >
-            ⤴ รวม
-          </button>
-        )}
+      {/* ─── Drag handle bar ───────────────────────── */}
+      <div
+        ref={dragHandleRef}
+        onMouseDown={onDragBarMouseDown}
+        className="flex items-center justify-center gap-1 cursor-grab active:cursor-grabbing py-1 select-none bg-surface/50 rounded-t-lg"
+      >
+        <span className="w-8 h-0.5 rounded-full bg-text-secondary/30" />
+        <span className="w-8 h-0.5 rounded-full bg-text-secondary/30" />
+        <span className="w-8 h-0.5 rounded-full bg-text-secondary/30" />
       </div>
 
-      {/* ─── Text input ──────────────────────────────── */}
-      <textarea
-        ref={textareaRef}
-        value={activeSeg?.text || ''}
-        onChange={(e) => updateSegmentText(activeSegIdx, e.target.value)}
-        className="w-full rounded border border-border px-2 py-1 text-sm mb-2 resize-none"
-        rows={2}
-        autoFocus
-      />
-
-      {/* ─── Style controls ──────────────────────────── */}
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        {/* Color */}
-        <div>
-          <label className="block text-[10px] text-text-secondary mb-0.5">สี</label>
-          <input
-            type="color"
-            value={activeSeg?.style.color || '#FFFFFF'}
-            onChange={(e) => updateSegmentStyle(activeSegIdx, { color: e.target.value })}
-            className="w-full h-7 rounded cursor-pointer"
-          />
-        </div>
-
-        {/* Font Family */}
-        <div>
-        <label className="block text-[10px] text-text-secondary mb-0.5">ฟอนต์</label>
-        <select
-          value={activeSeg?.style.fontFamily || 'Arial'}
-          onChange={(e) => updateSegmentStyle(activeSegIdx, { fontFamily: e.target.value })}
-          className="w-full rounded border border-border px-1 py-1 text-[10px] bg-white"
-        >
-          <option value="Arial">Arial</option>
-          <option value="Arial Black">Arial Black</option>
-          <option value="Verdana">Verdana</option>
-          <option value="Tahoma">Tahoma</option>
-          <option value="Trebuchet MS">Trebuchet MS</option>
-          <option value="Times New Roman">Times New Roman</option>
-          <option value="Georgia">Georgia</option>
-          <option value="Garamond">Garamond</option>
-          <option value="Courier New">Courier New</option>
-          <option value="Brush Script MT">Brush Script MT</option>
-          <option value="Impact">Impact</option>
-          <option value="Comic Sans MS">Comic Sans MS</option>
-          <option value="Kanit">Kanit</option>
-          <option value="Sarabun">Sarabun</option>
-          <option value="Noto Sans Thai">Noto Sans Thai</option>
-        </select>
-        </div>
-
-        {/* Font Weight */}
-        <div>
-          <label className="block text-[10px] text-text-secondary mb-0.5">น้ำหนัก</label>
-          <select
-            value={activeSeg?.style.fontWeight || 'normal'}
-            onChange={(e) =>
-              updateSegmentStyle(activeSegIdx, { fontWeight: e.target.value as FontWeight })
-            }
-            className="w-full rounded border border-border px-1 py-1 text-[10px] bg-white"
-          >
-            <option value="normal">Normal</option>
-            <option value="bold">Bold</option>
-            <option value="italic">Italic</option>
-            <option value="bold-italic">Bold Italic</option>
-          </select>
-        </div>
-
-        {/* Opacity */}
-        <div>
-          <label className="block text-[10px] text-text-secondary mb-0.5">
-            ความทึบ: {Math.round((activeSeg?.style.opacity ?? 1) * 100)}%
-          </label>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={Math.round((activeSeg?.style.opacity ?? 1) * 100)}
-            onChange={(e) =>
-              updateSegmentStyle(activeSegIdx, { opacity: parseInt(e.target.value, 10) / 100 })
-            }
-            className="w-full"
-          />
-        </div>
-
-        {/* Stroke Toggle */}
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={activeSeg?.style.strokeActive || false}
-              onChange={(e) =>
-                updateSegmentStyle(activeSegIdx, { strokeActive: e.target.checked })
-              }
-              className="accent-primary"
-            />
-            <span className="text-[10px]">Stroke</span>
-          </label>
-          {activeSeg?.style.strokeActive && (
-            <input
-              type="color"
-              value={activeSeg?.style.strokeColor || '#000000'}
-              onChange={(e) =>
-                updateSegmentStyle(activeSegIdx, { strokeColor: e.target.value })
-              }
-              className="w-6 h-6 rounded cursor-pointer"
-            />
+      <div className="px-3 pb-3">
+        {/* ─── Header: ช่วง segment ───────────────────── */}
+        <div className="flex items-center gap-1 mb-2 flex-wrap">
+          {segments.map((seg, idx) => (
+            <button
+              key={seg.id}
+              onClick={() => setActiveSegIdx(idx)}
+              className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                idx === activeSegIdx
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-surface text-text-secondary border-border hover:bg-border'
+              }`}
+            >
+              seg {idx + 1}
+            </button>
+          ))}
+          {isPremiumOrUp && (
+            <button
+              onClick={() => {
+                // แยก segment โดยใช้ cursor position ใน textarea
+                const ta = textareaRef.current;
+                if (ta) {
+                  const pos = ta.selectionStart;
+                  if (pos > 0 && pos < ta.value.length) {
+                    splitSegment(activeSegIdx, pos);
+                  } else {
+                    alert('วางเคอร์เซอร์ในข้อความตรงตำแหน่งที่ต้องการแบ่ง');
+                  }
+                }
+              }}
+              className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-text-secondary/40 text-text-secondary hover:bg-border"
+              title="วางเคอร์เซอร์ในข้อความตรงจุดที่ต้องการแบ่งแล้วคลิก (Premium+)"
+            >
+              + แยก
+            </button>
+          )}
+          {isPremiumOrUp && segments.length > 1 && activeSegIdx > 0 && (
+            <button
+              onClick={() => mergeSegments(activeSegIdx - 1)}
+              className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-text-secondary/40 text-text-secondary hover:bg-border"
+              title="รวม segment นี้กับอันก่อน"
+            >
+              ⤴ รวม
+            </button>
           )}
         </div>
 
-        {/* Shadow Toggle */}
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={activeSeg?.style.shadowActive || false}
-              onChange={(e) =>
-                updateSegmentStyle(activeSegIdx, { shadowActive: e.target.checked })
-              }
-              className="accent-primary"
-            />
-            <span className="text-[10px]">Shadow</span>
-          </label>
-          {activeSeg?.style.shadowActive && (
-            <input
-              type="color"
-              value={activeSeg?.style.shadowColor || '#000000'}
-              onChange={(e) =>
-                updateSegmentStyle(activeSegIdx, { shadowColor: e.target.value })
-              }
-              className="w-6 h-6 rounded cursor-pointer"
-            />
-          )}
-        </div>
+        {/* ─── Text input ──────────────────────────────── */}
+        <textarea
+          ref={textareaRef}
+          value={activeSeg?.text || ''}
+          onChange={(e) => updateSegmentText(activeSegIdx, e.target.value)}
+          className="w-full rounded border border-border px-2 py-1 mb-2 resize-none"
+          style={{ fontSize: `${editorFontSize}px` }}
+          rows={2}
+          autoFocus
+        />
 
-        {/* Stroke Width (เฉพาะ Premium+) */}
-        {isPremiumOrUp && activeSeg?.style.strokeActive && (
+        {/* ─── Style controls ──────────────────────────── */}
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {/* Color */}
           <div>
-            <label className="block text-[10px] text-text-secondary mb-0.5">
-              Stroke width: {activeSeg?.style.strokeWidth}px
-            </label>
+            <label className="block text-[10px] text-text-secondary mb-0.5">สี</label>
             <input
-              type="range"
-              min={0}
-              max={8}
-              step={0.5}
-              value={activeSeg?.style.strokeWidth || 2}
-              onChange={(e) =>
-                updateSegmentStyle(activeSegIdx, {
-                  strokeWidth: parseFloat(e.target.value),
-                })
-              }
-              className="w-full"
+              type="color"
+              value={activeSeg?.style.color || '#FFFFFF'}
+              onChange={(e) => updateSegmentStyle(activeSegIdx, { color: e.target.value })}
+              className="w-full h-7 rounded cursor-pointer"
             />
           </div>
-        )}
 
-        {/* Shadow Blur (Premium+) */}
-        {isPremiumOrUp && activeSeg?.style.shadowActive && (
+          {/* Font Family */}
+          <div>
+            <label className="block text-[10px] text-text-secondary mb-0.5">ฟอนต์</label>
+            <select
+              value={activeSeg?.style.fontFamily || 'Arial'}
+              onChange={(e) => updateSegmentStyle(activeSegIdx, { fontFamily: e.target.value })}
+              className="w-full rounded border border-border px-1 py-1 text-[10px] bg-white"
+            >
+              <option value="Arial">Arial</option>
+              <option value="Arial Black">Arial Black</option>
+              <option value="Verdana">Verdana</option>
+              <option value="Tahoma">Tahoma</option>
+              <option value="Trebuchet MS">Trebuchet MS</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Garamond">Garamond</option>
+              <option value="Courier New">Courier New</option>
+              <option value="Brush Script MT">Brush Script MT</option>
+              <option value="Impact">Impact</option>
+              <option value="Comic Sans MS">Comic Sans MS</option>
+              <option value="Kanit">Kanit</option>
+              <option value="Sarabun">Sarabun</option>
+              <option value="Noto Sans Thai">Noto Sans Thai</option>
+            </select>
+          </div>
+
+          {/* Font Weight */}
+          <div>
+            <label className="block text-[10px] text-text-secondary mb-0.5">น้ำหนัก</label>
+            <select
+              value={activeSeg?.style.fontWeight || 'normal'}
+              onChange={(e) =>
+                updateSegmentStyle(activeSegIdx, { fontWeight: e.target.value as FontWeight })
+              }
+              className="w-full rounded border border-border px-1 py-1 text-[10px] bg-white"
+            >
+              <option value="normal">Normal</option>
+              <option value="bold">Bold</option>
+              <option value="italic">Italic</option>
+              <option value="bold-italic">Bold Italic</option>
+            </select>
+          </div>
+
+          {/* Font Size (per segment) */}
           <div>
             <label className="block text-[10px] text-text-secondary mb-0.5">
-              Shadow blur: {activeSeg?.style.shadowBlur}px
+              ขนาด: {activeSeg?.style.fontSize || fallbackFontSize}px
             </label>
             <input
               type="range"
-              min={0}
-              max={20}
+              min={8}
+              max={120}
               step={1}
-              value={activeSeg?.style.shadowBlur || 4}
+              value={activeSeg?.style.fontSize || fallbackFontSize}
               onChange={(e) =>
-                updateSegmentStyle(activeSegIdx, { shadowBlur: parseInt(e.target.value, 10) })
+                updateSegmentStyle(activeSegIdx, { fontSize: parseInt(e.target.value, 10) })
               }
               className="w-full"
             />
           </div>
-        )}
 
-        {/* Shadow Offset (Premium+) */}
-        {isPremiumOrUp && activeSeg?.style.shadowActive && (
-          <>
+          {/* Opacity */}
+          <div>
+            <label className="block text-[10px] text-text-secondary mb-0.5">
+              ความทึบ: {Math.round((activeSeg?.style.opacity ?? 1) * 100)}%
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round((activeSeg?.style.opacity ?? 1) * 100)}
+              onChange={(e) =>
+                updateSegmentStyle(activeSegIdx, { opacity: parseInt(e.target.value, 10) / 100 })
+              }
+              className="w-full"
+            />
+          </div>
+
+          {/* Stroke Toggle */}
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={activeSeg?.style.strokeActive || false}
+                onChange={(e) =>
+                  updateSegmentStyle(activeSegIdx, { strokeActive: e.target.checked })
+                }
+                className="accent-primary"
+              />
+              <span className="text-[10px]">Stroke</span>
+            </label>
+            {activeSeg?.style.strokeActive && (
+              <input
+                type="color"
+                value={activeSeg?.style.strokeColor || '#000000'}
+                onChange={(e) =>
+                  updateSegmentStyle(activeSegIdx, { strokeColor: e.target.value })
+                }
+                className="w-6 h-6 rounded cursor-pointer"
+              />
+            )}
+          </div>
+
+          {/* Shadow Toggle */}
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={activeSeg?.style.shadowActive || false}
+                onChange={(e) =>
+                  updateSegmentStyle(activeSegIdx, { shadowActive: e.target.checked })
+                }
+                className="accent-primary"
+              />
+              <span className="text-[10px]">Shadow</span>
+            </label>
+            {activeSeg?.style.shadowActive && (
+              <input
+                type="color"
+                value={activeSeg?.style.shadowColor || '#000000'}
+                onChange={(e) =>
+                  updateSegmentStyle(activeSegIdx, { shadowColor: e.target.value })
+                }
+                className="w-6 h-6 rounded cursor-pointer"
+              />
+            )}
+          </div>
+
+          {/* Stroke Width (เฉพาะ Premium+) */}
+          {isPremiumOrUp && activeSeg?.style.strokeActive && (
             <div>
               <label className="block text-[10px] text-text-secondary mb-0.5">
-                Offset X: {activeSeg?.style.shadowOffsetX}
+                Stroke width: {activeSeg?.style.strokeWidth}px
               </label>
               <input
                 type="range"
-                min={-10}
-                max={10}
-                step={1}
-                value={activeSeg?.style.shadowOffsetX || 2}
+                min={0}
+                max={8}
+                step={0.5}
+                value={activeSeg?.style.strokeWidth || 2}
                 onChange={(e) =>
                   updateSegmentStyle(activeSegIdx, {
-                    shadowOffsetX: parseInt(e.target.value, 10),
+                    strokeWidth: parseFloat(e.target.value),
                   })
                 }
                 className="w-full"
               />
             </div>
+          )}
+
+          {/* Shadow Blur (Premium+) */}
+          {isPremiumOrUp && activeSeg?.style.shadowActive && (
             <div>
               <label className="block text-[10px] text-text-secondary mb-0.5">
-                Offset Y: {activeSeg?.style.shadowOffsetY}
+                Shadow blur: {activeSeg?.style.shadowBlur}px
               </label>
               <input
                 type="range"
-                min={-10}
-                max={10}
+                min={0}
+                max={20}
                 step={1}
-                value={activeSeg?.style.shadowOffsetY || 2}
+                value={activeSeg?.style.shadowBlur || 4}
                 onChange={(e) =>
-                  updateSegmentStyle(activeSegIdx, {
-                    shadowOffsetY: parseInt(e.target.value, 10),
-                  })
+                  updateSegmentStyle(activeSegIdx, { shadowBlur: parseInt(e.target.value, 10) })
                 }
                 className="w-full"
               />
             </div>
-          </>
-        )}
-      </div>
+          )}
 
-      {/* ─── ปุ่มล่าง ────────────────────────────────── */}
-      <div className="flex justify-between items-center mt-3 pt-2 border-t border-border">
-        <div className="text-[10px] text-text-secondary">
-          {segments.length} segment{segments.length > 1 ? 's' : ''}
-          {isPremiumOrUp && ' (Premium)'}
+          {/* Shadow Offset (Premium+) */}
+          {isPremiumOrUp && activeSeg?.style.shadowActive && (
+            <>
+              <div>
+                <label className="block text-[10px] text-text-secondary mb-0.5">
+                  Offset X: {activeSeg?.style.shadowOffsetX}
+                </label>
+                <input
+                  type="range"
+                  min={-10}
+                  max={10}
+                  step={1}
+                  value={activeSeg?.style.shadowOffsetX || 2}
+                  onChange={(e) =>
+                    updateSegmentStyle(activeSegIdx, {
+                      shadowOffsetX: parseInt(e.target.value, 10),
+                    })
+                  }
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-text-secondary mb-0.5">
+                  Offset Y: {activeSeg?.style.shadowOffsetY}
+                </label>
+                <input
+                  type="range"
+                  min={-10}
+                  max={10}
+                  step={1}
+                  value={activeSeg?.style.shadowOffsetY || 2}
+                  onChange={(e) =>
+                    updateSegmentStyle(activeSegIdx, {
+                      shadowOffsetY: parseInt(e.target.value, 10),
+                    })
+                  }
+                  className="w-full"
+                />
+              </div>
+            </>
+          )}
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={onClose}
-            className="text-[10px] px-3 py-1 rounded bg-surface text-text-secondary hover:bg-border"
-          >
-            ✕ ปิด
-          </button>
+
+        {/* ─── Editor Font Size Slider ──────────────────── */}
+        <div className="mt-2 mb-2">
+          <label className="block text-[10px] text-text-secondary mb-0.5">
+            ขนาดตัวอักษรในกล่องแก้ไข: {editorFontSize}px
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={10}
+              max={28}
+              step={1}
+              value={editorFontSize}
+              onChange={(e) => setEditorFontSize(parseInt(e.target.value, 10))}
+              className="flex-1"
+            />
+            <span className="text-[10px] text-text-secondary w-8 text-right">{editorFontSize}px</span>
+          </div>
+        </div>
+
+        {/* ─── ปุ่มล่าง ────────────────────────────────── */}
+        <div className="flex justify-between items-center mt-3 pt-2 border-t border-border">
+          <div className="text-[10px] text-text-secondary">
+            {segments.length} segment{segments.length > 1 ? 's' : ''}
+            {isPremiumOrUp && ' (Premium)'}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="text-[10px] px-3 py-1 rounded bg-surface text-text-secondary hover:bg-border"
+            >
+              ✕ ปิด
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -474,11 +568,6 @@ interface DragState {
   subId: string | null;
   startY: number;
   startYOffset: number;
-}
-
-interface Point {
-  x: number;
-  y: number;
 }
 
 export function InteractiveCanvasOverlay({
@@ -548,7 +637,7 @@ export function InteractiveCanvasOverlay({
       // สำหรับ multi-subtitle ในเวลาเดียวกัน จะใช้ context (position) 来判断
       // ถ้ามีหลายอัน → ใช้อันที่มี y_offset ใกล้เคียง py มากที่สุด
       const candidates = visibleSubs.map((s) => {
-        const yPos = canvasH * ((s.y_offset ?? 90) / 100);
+        const yPos = canvasH * ((s.y_offset ?? 80) / 100);
         return { sub: s, dist: Math.abs(py - yPos) };
       });
       candidates.sort((a, b) => a.dist - b.dist);
@@ -579,7 +668,7 @@ export function InteractiveCanvasOverlay({
         isDragging: true,
         subId: sub.id,
         startY: py,
-        startYOffset: sub.y_offset ?? 90,
+        startYOffset: sub.y_offset ?? 80,
       };
 
       video.setPointerCapture(e.pointerId);
@@ -625,7 +714,7 @@ export function InteractiveCanvasOverlay({
       const store = useSubtitleStore.getState();
       store.updateSubtitle(drag.subId, { y_offset: snapped });
     },
-    [videoRef]
+    [videoRef, fontSize]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -774,7 +863,7 @@ export function InteractiveCanvasOverlay({
         ctx.setLineDash([4, 4]);
         const active = findActiveSubtitle();
         if (active) {
-          const yPos = canvasH * ((active.y_offset ?? 90) / 100);
+          const yPos = canvasH * ((active.y_offset ?? 80) / 100);
           ctx.beginPath();
           ctx.moveTo(0, yPos);
           ctx.lineTo(canvasW, yPos);
@@ -801,6 +890,7 @@ export function InteractiveCanvasOverlay({
           y={editorState.y}
           width={editorState.width}
           tier={tier}
+          fontSize={fontSize}
           onClose={() => setEditorState(null)}
         />
       )}
@@ -979,11 +1069,12 @@ function buildFontString(
   if (typeof fontWeight === 'object' && fontWeight !== null) {
     const st = fontWeight as TextSegmentStyle;
     const ff = st.fontFamily || fontFamily;
+    const fs = st.fontSize || fontSize;
     switch (st.fontWeight) {
-      case 'bold': return `bold ${fontSize}px ${ff}`;
-      case 'italic': return `italic ${fontSize}px ${ff}`;
-      case 'bold-italic': return `bold italic ${fontSize}px ${ff}`;
-      default: return `${fontSize}px ${ff}`;
+      case 'bold': return `bold ${fs}px ${ff}`;
+      case 'italic': return `italic ${fs}px ${ff}`;
+      case 'bold-italic': return `bold italic ${fs}px ${ff}`;
+      default: return `${fs}px ${ff}`;
     }
   }
   switch (fontWeight) {

@@ -2,16 +2,10 @@
 // 🎥 Video Renderer — SubZeed
 // ============================================================
 // ใช้ FFmpeg.wasm (ฝั่ง Client) เพื่อสร้างวิดีโอ hardsub
-// รองรับ: MP4 (H.264), WebM (VP9), MOV, GIF
-//
-// ข้อดีเหนือ MediaRecorder:
-//   - รองรับ MP4 (H.264) — format ยอดนิยม
-//   - encode เร็วกว่า (FFmpeg optimized)
-//   - sync audio + subtitle อัตโนมัติ
-//   - Hardware acceleration (videotoolbox บน Mac)
+// แบบ NO-WORKER: import @ffmpeg/core โดยตรง ไม่ผ่าน @ffmpeg/ffmpeg
+// เพื่อเลี่ยง Web Worker path resolution issues ใน production
 // ============================================================
 
-import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 import type { SubtitleEntry, TextSegment, FontWeight } from './types';
 
@@ -32,11 +26,8 @@ export interface RenderOptions {
   fps: number;
   quality: QualityPreset;
   useHardwareAccel: boolean;
-  /** สำหรับ GIF: จำกัด width × height (scale proportionally) */
   gifMaxWidth: number;
-  /** สำหรับ GIF: จำนวน frame ที่จะข้าม (0 = ทุก frame, 1 = ข้าม 1 frame = fps ครึ่ง) */
   gifFrameSkip: number;
-  /** ตัดวิดีโอเฉพาะช่วง (trim) — เป็นวินาที */
   trimStart?: number;
   trimEnd?: number;
 }
@@ -58,123 +49,116 @@ const DEFAULT_RENDER_OPTIONS: RenderOptions = {
 
 // ─── Quality → CRF mapping ─────────────────────────────
 
-const CRF_MAP: Record<QualityPreset, number> = {
-  best: 18,
-  high: 23,
-  medium: 28,
-  fast: 35,
-};
+const CRF_MAP: Record<QualityPreset, number> = { best: 18, high: 23, medium: 28, fast: 35 };
+const VP9_CRF_MAP: Record<QualityPreset, number> = { best: 25, high: 30, medium: 35, fast: 40 };
 
-const VP9_CRF_MAP: Record<QualityPreset, number> = {
-  best: 25,
-  high: 30,
-  medium: 35,
-  fast: 40,
-};
+// ─── FFmpeg Singleton (NO WORKER) ──────────────────────
+// ใช้ createFFmpegCore จาก @ffmpeg/core โดยตรง
+// import() แบบ dynamic → worker-less
 
-// ─── FFmpeg Singleton ──────────────────────────────────
-// ใช้ toBlobURL() ตาม official docs ของ @ffmpeg/ffmpeg
-
-import { toBlobURL } from '@ffmpeg/util';
-
-let ffmpeg: FFmpeg | null = null;
+let ffmpegInstance: any = null;
 let ffmpegLoaded = false;
 let ffmpegLoadError: string | null = null;
 
 const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
 
-async function getFFmpeg(): Promise<FFmpeg> {
-  if (ffmpegLoaded && ffmpeg) return ffmpeg;
-  if (ffmpegLoadError) {
-    throw new Error(`FFmpeg โหลดไม่สำเร็จ (ก่อนหน้า): ${ffmpegLoadError}`);
-  }
-
-  ffmpeg = new FFmpeg();
-
-  ffmpeg.on('log', ({ type, message }) => {
-    if (type === 'error') console.error('[ffmpeg]', message);
-  });
+async function ensureFFmpegLoaded(): Promise<any> {
+  if (ffmpegLoaded && ffmpegInstance) return ffmpegInstance;
+  if (ffmpegLoadError) throw new Error(`FFmpeg โหลดไม่สำเร็จ (ก่อนหน้า): ${ffmpegLoadError}`);
 
   try {
-    const baseURL = FFMPEG_BASE;
-    console.log('[ffmpeg] Loading from CDN:', baseURL);
+    // 1. ดึง core.js จาก CDN
+    console.log('[ffmpeg] Loading core.js from CDN...');
+    const coreResp = await fetch(`${FFMPEG_BASE}/ffmpeg-core.js`);
+    const coreJs = await coreResp.text();
+    const coreBlob = new Blob([coreJs], { type: 'text/javascript' });
+    const coreBlobURL = URL.createObjectURL(coreBlob);
     
-    const coreBlobURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
-    const wasmBlobURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+    // 2. ดึง wasm จาก CDN
+    console.log('[ffmpeg] Loading wasm from CDN...');
+    const wasmResp = await fetch(`${FFMPEG_BASE}/ffmpeg-core.wasm`);
+    const wasmBuffer = await wasmResp.arrayBuffer();
+    const wasmBlob = new Blob([wasmBuffer], { type: 'application/wasm' });
+    const wasmBlobURL = URL.createObjectURL(wasmBlob);
     
-    console.log('[ffmpeg] core blob:', coreBlobURL?.slice(0, 60));
-    console.log('[ffmpeg] wasm blob:', wasmBlobURL?.slice(0, 60));
-    console.log('[ffmpeg] Using core.js as classWorkerURL');
+    // 3. import core.js (dynamic import ด้วย blob URL)
+    console.log('[ffmpeg] Importing core module...');
+    const coreModule = await import(/* @vite-ignore */ coreBlobURL);
+    const createFFmpeg: any = coreModule.default || coreModule.createFFmpegCore;
     
-    // ใช้ coreURL (ffmpeg-core.js) เป็น classWorkerURL โดยตรง
-    // เพราะ ffmpeg-core.js สามารถทำหน้าที่เป็น Web Worker ได้ (self-contained)
-    await ffmpeg.load({
-      coreURL: coreBlobURL,
-      wasmURL: wasmBlobURL,
-      classWorkerURL: coreBlobURL,
+    if (!createFFmpeg) {
+      const keys = Object.keys(coreModule);
+      console.log('[ffmpeg] Core exports:', keys);
+      // ลองใช้ตัวแรกที่เห็น
+      const found = keys.find(k => typeof coreModule[k] === 'function');
+      if (found) {
+        console.log('[ffmpeg] Using export:', found);
+        ffmpegInstance = await coreModule[found]({
+          mainScriptUrlOrBlob: wasmBlobURL,
+          locateFile: (path: string) => path.endsWith('.wasm') ? wasmBlobURL : path,
+        });
+      } else {
+        throw new Error('ไม่พบ createFFmpegCore export');
+      }
+    } else {
+      // 4. สร้าง instance
+      console.log('[ffmpeg] Creating FFmpeg instance...');
+      ffmpegInstance = await createFFmpeg({
+        mainScriptUrlOrBlob: wasmBlobURL,
+        locateFile: (path: string) => path.endsWith('.wasm') ? wasmBlobURL : path,
+      });
+    }
+    
+    // 5. ตั้งค่า log/progress
+    ffmpegInstance.setLogger((data: any) => {
+      if (data.type === 'error') console.error('[ffmpeg]', data.message);
     });
+    
     ffmpegLoaded = true;
-    console.log('[ffmpeg] Loaded successfully');
-    return ffmpeg;
+    console.log('[ffmpeg] FFmpeg ready');
+    return ffmpegInstance;
   } catch (err) {
     ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';
     console.error('[ffmpeg] Load failed:', ffmpegLoadError);
-    if (err instanceof Error && err.stack) {
-      console.error('[ffmpeg] Stack:', err.stack.slice(0, 300));
-    }
     throw new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${ffmpegLoadError}`);
   }
 }
 
-// ─── Codec helpers ─────────────────────────────────────
+// ─── Wrapper (API เหมือน @ffmpeg/ffmpeg) ──────────────
 
-function codecArgs(format: ExportFormat, quality: QualityPreset, hwAccel: boolean): string[] {
-  if (format === 'gif') return []; // handled separately
-
-  const crf = format === 'webm' ? VP9_CRF_MAP[quality] : CRF_MAP[quality];
-
-  const baseH264 = [
-    '-c:v', hwAccel ? 'h264_videotoolbox' : 'libx264',
-    '-preset', quality === 'best' ? 'slow' : quality === 'fast' ? 'veryfast' : 'ultrafast',
-    ...(hwAccel ? ['-b:v', String(bitrateForQuality(quality))] : ['-crf', String(crf)]),
-    '-pix_fmt', 'yuv420p',
-  ];
-
-  switch (format) {
-    case 'webm':
-      return ['-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-cpu-used', quality === 'fast' ? '4' : '2'];
-    case 'mov':
-      return baseH264;
-    default:
-      return baseH264;
+class FFWrapper {
+  private inst: any;
+  private progressCbs: Function[] = [];
+  
+  constructor(inst: any) {
+    this.inst = inst;
+    inst.setProgress((data: any) => {
+      this.progressCbs.forEach(cb => cb(data));
+    });
   }
-}
-
-/** bitrate (kbps) สำหรับ hardware encoder ที่ไม่รองรับ CRF */
-function bitrateForQuality(quality: QualityPreset): number {
-  switch (quality) {
-    case 'best': return 8000;
-    case 'high': return 5000;
-    case 'medium': return 3000;
-    case 'fast': return 1500;
+  
+  writeFile(path: string, data: Uint8Array) {
+    this.inst.FS_writeFile(path, data);
   }
-}
-
-function extOf(format: ExportFormat): string {
-  switch (format) {
-    case 'mp4': return 'mp4';
-    case 'webm': return 'webm';
-    case 'mov': return 'mov';
-    case 'gif': return 'gif';
+  
+  async readFile(path: string): Promise<Uint8Array> {
+    return this.inst.FS_readFile(path);
   }
-}
-
-function mimeOf(format: ExportFormat): string {
-  switch (format) {
-    case 'mp4': return 'video/mp4';
-    case 'webm': return 'video/webm';
-    case 'mov': return 'video/quicktime';
-    case 'gif': return 'image/gif';
+  
+  async deleteFile(path: string) {
+    try { this.inst.FS_unlink(path); } catch {}
+  }
+  
+  async exec(args: string[]) {
+    const fullArgs = ['-nostdin', '-y', ...args];
+    console.log('[ffmpeg] exec:', fullArgs.join(' ').slice(0, 200));
+    const code = this.inst.run(...fullArgs);
+    console.log('[ffmpeg] exec done, code:', code);
+    return code;
+  }
+  
+  on(event: string, cb: Function) {
+    if (event === 'progress') this.progressCbs.push(cb);
   }
 }
 
@@ -190,17 +174,19 @@ export async function renderVideoWithSubtitles(
   const ext = extOf(opts.format);
 
   try {
-    // 1. Load FFmpeg
     onProgress?.(2);
-    const ff = await getFFmpeg();
+    console.log('[render] Loading FFmpeg...');
+    const inst = await ensureFFmpegLoaded();
+    const ff = new FFWrapper(inst);
     onProgress?.(5);
+    console.log('[render] FFmpeg ready');
 
-    // 2. Get video data
     onProgress?.(6);
     let videoData: Blob;
     if (typeof videoBlobOrUrl === 'string') {
+      console.log('[render] Fetching video...');
       const resp = await fetch(videoBlobOrUrl);
-      if (!resp.ok) throw new Error(`โหลดวิดีโอไม่สำเร็จ (HTTP ${resp.status})`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       videoData = await resp.blob();
     } else {
       videoData = videoBlobOrUrl;
@@ -208,70 +194,62 @@ export async function renderVideoWithSubtitles(
     if (videoData.size === 0) throw new Error('ไฟล์วิดีโอว่างเปล่า');
     onProgress?.(8);
 
-    // 3. Write input to virtual FS
     const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
+    console.log('[render] Write input...');
     await ff.writeFile(inName, await fetchFile(videoData));
     onProgress?.(10);
 
-    // 4. Build ASS subtitle
+    console.log('[render] Build ASS...');
     const ass = buildAss(subtitles, opts);
     await ff.writeFile('subs.ass', ass);
     onProgress?.(12);
 
-    // 5. FFmpeg progress
     const outName = `output.${ext}`;
-    ff.on('progress', ({ progress: pct }) => {
-      const mapped = Math.min(12 + Math.round(pct * 83), 95);
-      onProgress?.(mapped);
+    ff.on('progress', ({ progress: pct }: any) => {
+      onProgress?.(Math.min(12 + Math.round(pct * 83), 95));
     });
 
-    // 6. Build arguments
+    console.log('[render] Run FFmpeg...');
     if (opts.format === 'gif') {
       await renderGif(ff, inName, outName, opts);
     } else {
       await renderVideo(ff, inName, outName, opts);
     }
 
-    // 7. Read result
     onProgress?.(97);
+    console.log('[render] Read output...');
     const readResult = await ff.readFile(outName);
     let dataBuffer: ArrayBuffer;
     if (readResult instanceof Uint8Array) {
       dataBuffer = readResult.buffer.slice(0) as ArrayBuffer;
-    } else if (typeof readResult === 'string') {
-      dataBuffer = new TextEncoder().encode(readResult).buffer as ArrayBuffer;
     } else {
-      throw new Error('ไม่สามารถอ่านผลลัพธ์จาก FFmpeg ได้');
+      throw new Error('อ่านผลลัพธ์ไม่ได้');
     }
 
-    // Cleanup
-    await ff.deleteFile(inName).catch(() => {});
-    await ff.deleteFile(outName).catch(() => {});
-    await ff.deleteFile('subs.ass').catch(() => {});
+    await ff.deleteFile(inName);
+    await ff.deleteFile(outName);
+    await ff.deleteFile('subs.ass');
 
     if (dataBuffer.byteLength === 0) throw new Error('FFmpeg สร้างไฟล์ว่างเปล่า');
 
     onProgress?.(99);
     const blob = new Blob([dataBuffer], { type: mimeOf(opts.format) });
     onProgress?.(100);
+    console.log('[render] Done! Size:', blob.size);
     return blob;
   } catch (err) {
-    // clean progress state
+    console.error('[render] ERROR:', err);
     onProgress?.(0);
-    throw err; // โยนให้ caller จัดการ
+    throw err;
   }
 }
 
-/** แยก render video ออกมาให้อ่านง่ายขึ้น */
-async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: RenderOptions) {
+// ─── FFmpeg Commands ───────────────────────────────────
+
+async function renderVideo(ff: FFWrapper, inName: string, outName: string, opts: RenderOptions) {
   const args: string[] = [];
-  // trim options ก่อน -i
-  if (opts.trimStart !== undefined && opts.trimStart > 0) {
-    args.push('-ss', String(opts.trimStart));
-  }
-  if (opts.trimEnd !== undefined && opts.trimEnd > opts.trimStart!) {
-    args.push('-to', String(opts.trimEnd));
-  }
+  if (opts.trimStart !== undefined && opts.trimStart > 0) args.push('-ss', String(opts.trimStart));
+  if (opts.trimEnd !== undefined && opts.trimEnd > opts.trimStart!) args.push('-to', String(opts.trimEnd));
   args.push('-i', inName);
   args.push('-vf', 'subtitles=subs.ass');
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel));
@@ -281,8 +259,7 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
   await ff.exec(args);
 }
 
-/** แยก render GIF ออกมา */
-async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: RenderOptions) {
+async function renderGif(ff: FFWrapper, inName: string, outName: string, opts: RenderOptions) {
   const paletteName = 'palette.png';
   const fps = Math.max(5, Math.round(opts.fps / (opts.gifFrameSkip + 1)));
   const scale = `scale=${opts.gifMaxWidth}:-1:flags=lanczos`;
@@ -291,16 +268,14 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
     : '';
 
   try {
-    // Step 1: palette
-    const paletteArgs: string[] = [];
-    if (opts.trimStart !== undefined && opts.trimStart > 0) paletteArgs.push('-ss', String(opts.trimStart));
-    if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) paletteArgs.push('-to', String(opts.trimEnd));
-    paletteArgs.push('-i', inName);
-    paletteArgs.push('-vf', `${trimFilter}${scale},subtitles=subs.ass,palettegen=stats_mode=diff`);
-    paletteArgs.push('-y', paletteName);
-    await ff.exec(paletteArgs);
+    const palArgs: string[] = [];
+    if (opts.trimStart !== undefined && opts.trimStart > 0) palArgs.push('-ss', String(opts.trimStart));
+    if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) palArgs.push('-to', String(opts.trimEnd));
+    palArgs.push('-i', inName);
+    palArgs.push('-vf', `${trimFilter}${scale},subtitles=subs.ass,palettegen=stats_mode=diff`);
+    palArgs.push('-y', paletteName);
+    await ff.exec(palArgs);
 
-    // Step 2: GIF from palette
     const gifArgs: string[] = [];
     if (opts.trimStart !== undefined && opts.trimStart > 0) gifArgs.push('-ss', String(opts.trimStart));
     if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) gifArgs.push('-to', String(opts.trimEnd));
@@ -311,127 +286,110 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
     gifArgs.push('-y', outName);
     await ff.exec(gifArgs);
   } finally {
-    await ff.deleteFile(paletteName).catch(() => {});
+    await ff.deleteFile(paletteName);
   }
 }
 
+// ─── Codec helpers ─────────────────────────────────────
+
+function codecArgs(format: ExportFormat, quality: QualityPreset, hwAccel: boolean): string[] {
+  if (format === 'gif') return [];
+  const crf = format === 'webm' ? VP9_CRF_MAP[quality] : CRF_MAP[quality];
+  const baseH264 = [
+    '-c:v', hwAccel ? 'h264_videotoolbox' : 'libx264',
+    '-preset', quality === 'best' ? 'slow' : quality === 'fast' ? 'veryfast' : 'ultrafast',
+    ...(hwAccel ? ['-b:v', String(bitrateForQuality(quality))] : ['-crf', String(crf)]),
+    '-pix_fmt', 'yuv420p',
+  ];
+  switch (format) {
+    case 'webm': return ['-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-cpu-used', quality === 'fast' ? '4' : '2'];
+    case 'mov': return baseH264;
+    default: return baseH264;
+  }
+}
+
+function bitrateForQuality(quality: QualityPreset): number {
+  switch (quality) {
+    case 'best': return 8000;
+    case 'high': return 5000;
+    case 'medium': return 3000;
+    case 'fast': return 1500;
+  }
+}
+
+function extOf(format: ExportFormat): string {
+  switch (format) { case 'mp4': return 'mp4'; case 'webm': return 'webm'; case 'mov': return 'mov'; case 'gif': return 'gif'; }
+}
+
+function mimeOf(format: ExportFormat): string {
+  switch (format) { case 'mp4': return 'video/mp4'; case 'webm': return 'video/webm'; case 'mov': return 'video/quicktime'; case 'gif': return 'image/gif'; }
+}
+
 // ─── ASS Builder ───────────────────────────────────────
-// รองรับ segment-based rendering (หลายสี/สไตล์ในบรรทัดเดียว)
-// ใช้ ASS override codes: {\c&Hxxxxxx&}, {\b1}, {\i1}, {\bord}, {\shad} etc.
 
 function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
   const l: string[] = [];
   l.push('[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 640', 'PlayResY: 360', 'ScaledBorderAndShadow: yes', '');
   l.push('[V4+ Styles]');
   l.push('Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding');
-  // Default style (ใช้เมื่อไม่มี segment override)
   l.push(`Style: Default,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`);
   l.push('');
   l.push('[Events]');
   l.push('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
   subs.forEach((s) => {
-    // ถ้ามี segments ให้ render แบบหลายสี
     if (s.segments && s.segments.length > 0) {
       const assText = s.segments.map(seg => segmentToAss(seg, opts)).join('');
       l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${assText}`);
     } else {
-      // Fallback: ใช้ข้อความ plain
       l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${s.text.replace(/\n/g, '\\N')}`);
     }
   });
   return l.join('\n');
 }
 
-/**
- * แปลง TextSegment → ASS override codes
- * รองรับ: สี (PrimaryColour), Bold, Italic, Border (Outline), Shadow
- */
 function segmentToAss(seg: TextSegment, opts: RenderOptions): string {
   const st = seg.style;
   const tags: string[] = [];
-
-  // ─── Color (PrimaryColour) ──────────────────────────
-  // ASS ใช้สีรูปแบบ &HBBGGRR& (little-endian)
-  const hexColor = hexToAssColor(st.color);
-  tags.push(`\\c${hexColor}`);
-
-  // ─── Opacity (Alpha) ────────────────────────────────
-  // ASS alpha = 255 - (opacity * 255) แปลงเป็น &HFF&
+  tags.push(`\\c${hexToAssColor(st.color)}`);
   const alpha = Math.round((1 - st.opacity) * 255);
   tags.push(`\\alpha&H${alpha.toString(16).padStart(2, '0').toUpperCase()}&`);
-
-  // ─── Bold ────────────────────────────────────────────
   const isBold = st.fontWeight === 'bold' || st.fontWeight === 'bold-italic';
   const isItalic = st.fontWeight === 'italic' || st.fontWeight === 'bold-italic';
   tags.push(`\\b${isBold ? '1' : '0'}`);
   tags.push(`\\i${isItalic ? '1' : '0'}`);
-
-  // ─── Stroke (Outline) ───────────────────────────────
   if (st.strokeWidth > 0 && st.strokeOpacity > 0) {
-    const outlineColor = hexToAssColor(st.strokeColor);
     tags.push(`\\bord${st.strokeWidth}`);
-    tags.push(`\\3c${outlineColor}`);
-    // Outline alpha
-    const outlineAlpha = Math.round((1 - st.strokeOpacity) * 255);
-    tags.push(`\\3a&H${outlineAlpha.toString(16).padStart(2, '0').toUpperCase()}&`);
-  } else {
-    tags.push('\\bord0');
-  }
-
-  // ─── Shadow ──────────────────────────────────────────
+    tags.push(`\\3c${hexToAssColor(st.strokeColor)}`);
+    const oa = Math.round((1 - st.strokeOpacity) * 255);
+    tags.push(`\\3a&H${oa.toString(16).padStart(2, '0').toUpperCase()}&`);
+  } else { tags.push('\\bord0'); }
   if (st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
-    // ASS shadow distance (ใช้ offset Y เป็นหลัก เพราะ ASS shadow เป็นทิศทางเดียว)
-    const shadowDist = Math.max(1, Math.abs(st.shadowOffsetY));
-    tags.push(`\\shad${shadowDist}`);
-    const shadowColor = hexToAssColor(st.shadowColor);
-    tags.push(`\\4c${shadowColor}`);
-    const shadowAlpha = Math.round((1 - st.shadowOpacity) * 255);
-    tags.push(`\\4a&H${shadowAlpha.toString(16).padStart(2, '0').toUpperCase()}&`);
-  } else {
-    tags.push('\\shad0');
-  }
-
-  // ─── Font Size (ใช้ของ segment ถ้าต้องการต่าง) ─────
-  // ใช้ขนาดปกติ
-
-  const tagString = `{${tags.join('')}}`;
-  return `${tagString}${escapeAssText(seg.text)}`;
+    tags.push(`\\shad${Math.max(1, Math.abs(st.shadowOffsetY))}`);
+    tags.push(`\\4c${hexToAssColor(st.shadowColor)}`);
+    const sa = Math.round((1 - st.shadowOpacity) * 255);
+    tags.push(`\\4a&H${sa.toString(16).padStart(2, '0').toUpperCase()}&`);
+  } else { tags.push('\\shad0'); }
+  return `{${tags.join('')}}${escapeAssText(seg.text)}`;
 }
 
-/**
- * แปลง hex color (#RRGGBB หรือ #RGB) → ASS format (&HBBGGRR&)
- */
 function hexToAssColor(hex: string): string {
   let c = hex.replace('#', '');
-  if (c.length === 3) {
-    c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
-  }
-  // ASS ใช้ RGB แต่สลับเป็น BGR (little-endian)
-  const r = c.substring(0, 2);
-  const g = c.substring(2, 4);
-  const b = c.substring(4, 6);
-  return `&H${b}${g}${r}&`;
+  if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+  return `&H${c.substring(4, 6)}${c.substring(2, 4)}${c.substring(0, 2)}&`;
 }
 
-/**
- * Escape ข้อความสำหรับ ASS (ป้องกันอักขระพิเศษ)
- */
 function escapeAssText(text: string): string {
-  return text
-    .replace(/\n/g, '\\N')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
-    .replace(/\|/g, '\\|');
+  return text.replace(/\n/g, '\\N').replace(/\{/g, '\\{').replace(/\}/g, '\\}').replace(/\|/g, '\\|');
 }
 
 function fmt(sec: number): string {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
-  return `${String(h).padStart(1, '0')}:${String(m).padStart(2, '0')}:${String(Math.floor(s)).padStart(2, '0')}.${String(Math.round((s % 1) * 100)).padStart(2, '0')}`;
+  return `${h}:${String(m).padStart(2, '0')}:${String(Math.floor(s)).padStart(2, '0')}.${String(Math.round((s % 1) * 100)).padStart(2, '0')}`;
 }
 
-// ─── Helpers ───────────────────────────────────────────
+// ─── Export ────────────────────────────────────────────
 
 export function downloadVideoBlob(blob: Blob, filename: string = 'subzeed-video.mp4') {
   const url = URL.createObjectURL(blob);
@@ -442,13 +400,9 @@ export function downloadVideoBlob(blob: Blob, filename: string = 'subzeed-video.
   URL.revokeObjectURL(url);
 }
 
-/** ตรวจสอบว่า browser รองรับ hardware acceleration (VideoToolbox) หรือไม่ */
 export function supportsHardwareAccel(): boolean {
   if (typeof window === 'undefined') return false;
-  // macOS Safari/Chromium มี videotoolbox
-  const isMac = navigator.platform?.toLowerCase().includes('mac');
-  // Chrome, Edge, Safari ทุกตัวบน Mac รองรับ
-  return isMac;
+  return navigator.platform?.toLowerCase().includes('mac') || false;
 }
 
 export const EXPORT_FORMATS: { value: ExportFormat; label: string; mime: string }[] = [

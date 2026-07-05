@@ -106,14 +106,17 @@ async function getFFmpeg(): Promise<FFmpeg> {
 
   try {
     const coreBase = getFFmpegCoreBase();
+    const workerBase = getFFmpegCoreBase().replace('/ffmpeg-core', '/worker');
     console.log('[ffmpeg] Loading from:', coreBase);
     
     const coreBlobURL = await toBlobURL(`${coreBase}.js`, 'text/javascript');
     const wasmBlobURL = await toBlobURL(`${coreBase}.wasm`, 'application/wasm');
+    const workerBlobURL = await toBlobURL(`${workerBase}.js`, 'text/javascript');
     
     await ffmpeg.load({
       coreURL: coreBlobURL,
       wasmURL: wasmBlobURL,
+      classWorkerURL: workerBlobURL,
     });
     ffmpegLoaded = true;
     console.log('[ffmpeg] Loaded successfully');

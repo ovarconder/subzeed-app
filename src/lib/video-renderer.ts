@@ -99,13 +99,20 @@ async function getFFmpeg(): Promise<FFmpeg> {
     const baseURL = FFMPEG_BASE;
     console.log('[ffmpeg] Loading from CDN:', baseURL);
     
-    const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
-    const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+    const coreBlobURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
+    const wasmBlobURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
     
-    console.log('[ffmpeg] core blob:', coreURL?.slice(0, 60));
-    console.log('[ffmpeg] wasm blob:', wasmURL?.slice(0, 60));
+    console.log('[ffmpeg] core blob:', coreBlobURL?.slice(0, 60));
+    console.log('[ffmpeg] wasm blob:', wasmBlobURL?.slice(0, 60));
+    console.log('[ffmpeg] Using core.js as classWorkerURL');
     
-    await ffmpeg.load({ coreURL, wasmURL });
+    // ใช้ coreURL (ffmpeg-core.js) เป็น classWorkerURL โดยตรง
+    // เพราะ ffmpeg-core.js สามารถทำหน้าที่เป็น Web Worker ได้ (self-contained)
+    await ffmpeg.load({
+      coreURL: coreBlobURL,
+      wasmURL: wasmBlobURL,
+      classWorkerURL: coreBlobURL,
+    });
     ffmpegLoaded = true;
     console.log('[ffmpeg] Loaded successfully');
     return ffmpeg;

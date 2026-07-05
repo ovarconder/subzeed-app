@@ -6,7 +6,6 @@ import { Navbar } from '@/components/layout/navbar';
 import { Button } from '@/components/ui/button';
 import { SubtitleItem } from '@/components/studio/subtitle-item';
 import { SubtitleSettingsBar } from '@/components/studio/subtitle-settings-bar';
-import { SubtitleCanvasOverlay } from '@/components/studio/subtitle-canvas-overlay';
 import { InteractiveCanvasOverlay } from '@/components/studio/interactive-canvas-overlay';
 import { renderVideoWithSubtitles, downloadVideoBlob, EXPORT_FORMATS, QUALITY_PRESETS, supportsHardwareAccel } from '@/lib/video-renderer';
 import type { ExportFormat, QualityPreset } from '@/lib/video-renderer';
@@ -85,7 +84,6 @@ export default function StudioPage() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const canvasOverlayRef = useRef<HTMLCanvasElement>(null);
   const interactiveCanvasRef = useRef<HTMLCanvasElement>(null);
   const vttUrlRef = useRef<string | null>(null);
 
@@ -714,19 +712,7 @@ export default function StudioPage() {
                   className="max-w-full max-h-full object-contain"
                   style={{ pointerEvents: 'auto' }}
                 />
-                {/* Canvas subtitle overlay — static */}
-                <canvas
-                  ref={canvasOverlayRef}
-                  className="absolute pointer-events-none"
-                />
-                <SubtitleCanvasOverlay
-                  videoRef={videoRef}
-                  canvasRef={canvasOverlayRef}
-                  fontFamily={selectedFontFamily}
-                  fontSize={selectedFontSize}
-                  tier={(p?.tier || 'free') as any}
-                />
-                {/* 🆕 Interactive Canvas — ลากย้าย Y, ดับเบิลคลิกแก้ไข, multi-segment (Premium+) */}
+                {/* Canvas subtitle — ใช้ interactive overlay เป็นตัวหลักในการวาด */}
                 <canvas
                   ref={interactiveCanvasRef}
                   className="absolute"

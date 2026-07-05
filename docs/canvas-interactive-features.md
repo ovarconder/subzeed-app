@@ -200,6 +200,28 @@
 
 ---
 
+## 🧹 Removed: SubtitleCanvasOverlay ซ้อนทับ (2026-07-04)
+
+### ปัญหา
+- `SubtitleCanvasOverlay` และ `InteractiveCanvasOverlay` วาด subtitle พร้อมกัน 2 ชั้น
+- background box ที่ `SubtitleCanvasOverlay` วาด (bgActive = true เสมอ) ทับใต้ interactive canvas
+- การปิด background ใน interactive overlay ไม่มีผล เพราะอีก layer ยังวาด background อยู่
+
+### ไฟล์ที่เกี่ยวข้อง
+- `src/app/studio/page.tsx`
+
+### การเปลี่ยนแปลง
+- ลบ `<SubtitleCanvasOverlay>` component และ canvas element ที่เกี่ยวข้อง (`canvasOverlayRef`) ออกจาก JSX
+- ลบ import `SubtitleCanvasOverlay` และ declaration `canvasOverlayRef`
+- `InteractiveCanvasOverlay` ทำหน้าที่วาด subtitle เพียงเจ้าเดียว
+- Dead code: `SubtitleCanvasOverlay` ยังคงอยู่ใน codebase (อาจถูกใช้ใน `[id]/page.tsx`)
+
+### ข้อควรระวัง
+- ปัจจุบัน `InteractiveCanvasOverlay` วาด subtitle ด้วย `drawSegments()` ซึ่งใช้ข้อมูลจาก `subtitlesRef` (sync ผ่าน subscribe) ไม่มี `displayStyle` → ใช้ default background (bgActive=true, bgOpacity=0.6)
+- ถ้าต้องการให้ background ปิดได้ ต้องเพิ่ม `displayStyle` prop ให้ `InteractiveCanvasOverlay` หรือ implement UI สำหรับปรับ display style
+
+---
+
 ## 📐 Canvas Sizing & DPR (History)
 
 - `bbbdccf`: ใช้ `video.videoWidth/videoHeight` แทน `getBoundingClientRect` — แก้ปัญหาจอ retina

@@ -506,6 +506,7 @@ export default function StudioPage() {
       setExportProgress(0);
     } catch (err: any) {
       const msg = err.message || '';
+      console.error('[Export] ERROR in handleExportVideo:', { msg, fullError: err, stack: err.stack?.slice(0, 300) });
       setIsExporting(false);
       setExportProgress(0);
       if (msg.includes('FFmpeg') || msg.includes('ffmpeg')) {

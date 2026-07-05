@@ -164,6 +164,42 @@
 
 ---
 
+## 🎨 Drag Handle Bar: สีน้ำเงิน + Visual Polish (2026-07-04)
+
+### ปัญหา
+- Drag handle bar เป็นแถบจาง ๆ (`bg-surface/50`) มองไม่ชัด
+- ไม่มี visual feedback เมื่อ hover
+
+### ไฟล์ที่เกี่ยวข้อง
+- `src/components/studio/interactive-canvas-overlay.tsx`
+
+### การเปลี่ยนแปลง
+- เปลี่ยนพื้นหลังเป็น `bg-primary/10` (ฟ้าจาง) → `bg-primary/15` เมื่อ hover
+- เปลี่ยนก้อน handle จาก `bg-text-secondary/30` → `bg-primary/50` (สีน้ำเงินเด่น)
+- เพิ่ม `transition-colors` และ `py-1` → `py-2` (พื้นที่ลากมากขึ้น)
+
+---
+
+## 🖼️ Fix: Subtitle ไม่แสดงผลบน Canvas (2026-07-04)
+
+### ปัญหา
+- การปรับ font, ขนาด, สี, opacity, stroke, shadow ใน popup inline editor **ไม่มีผลกับ text layer บน video** จริง
+- สาเหตุ: render loop ใน `InteractiveCanvasOverlay` ไม่ได้เรียก `drawSegments()` เลย — วาดแค่ guideline + drag indicator
+
+### ไฟล์ที่เกี่ยวข้อง
+- `src/components/studio/interactive-canvas-overlay.tsx`
+
+### การเปลี่ยนแปลง
+- เพิ่มการเรียก `drawSegments()` ใน render loop ก่อนวาด drag indicator
+- ใช้ `findActiveSubtitle()` หา subtitle ที่กำลัง active
+- ส่ง `segments`, `fontFamily`, `fontSize`, `y_offset`, `position` ไปให้ `drawSegments()`
+
+### หมายเหตุ
+- `drawSegments()` ถูก implement ไว้ท้ายไฟล์แล้ว (copy จาก `SubtitleCanvasOverlay`) แต่ไม่เคยถูกเรียกจาก component นี้
+- การเปลี่ยนแปลง style ผ่าน `updateSegmentStyle()` → `syncToStore()` → store update → `subtitlesRef` (ผ่าน subscribe) → render loop อ่านผ่าน `findActiveSubtitle()` → เกิดผลบน canvas ทันที
+
+---
+
 ## 📐 Canvas Sizing & DPR (History)
 
 - `bbbdccf`: ใช้ `video.videoWidth/videoHeight` แทน `getBoundingClientRect` — แก้ปัญหาจอ retina

@@ -221,11 +221,11 @@ function InlineSubtitleEditor({
       <div
         ref={dragHandleRef}
         onMouseDown={onDragBarMouseDown}
-        className="flex items-center justify-center gap-1 cursor-grab active:cursor-grabbing py-1 select-none bg-surface/50 rounded-t-lg"
+        className="flex items-center justify-center gap-1 cursor-grab active:cursor-grabbing py-2 select-none bg-primary/10 rounded-t-lg hover:bg-primary/15 transition-colors"
       >
-        <span className="w-8 h-0.5 rounded-full bg-text-secondary/30" />
-        <span className="w-8 h-0.5 rounded-full bg-text-secondary/30" />
-        <span className="w-8 h-0.5 rounded-full bg-text-secondary/30" />
+        <span className="w-8 h-0.5 rounded-full bg-primary/50" />
+        <span className="w-8 h-0.5 rounded-full bg-primary/50" />
+        <span className="w-8 h-0.5 rounded-full bg-primary/50" />
       </div>
 
       <div className="px-3 pb-3">
@@ -853,7 +853,21 @@ export function InteractiveCanvasOverlay({
         ctx.restore();
       }
 
-      // ✅ วาดเฉพาะ drag indicator อย่างเดียว
+      // ─── วาด subtitle ที่ active ณ เวลาปัจจุบัน ──
+      const activeSub = findActiveSubtitle();
+      if (activeSub && activeSub.segments && activeSub.segments.length > 0) {
+        drawSegments(
+          ctx,
+          activeSub.segments,
+          canvasW,
+          canvasH,
+          fontFamily,
+          fontSize,
+          activeSub.y_offset ?? 80,
+          activeSub.position || 'bottom',
+          undefined // displayStyle — ใช้ default
+        );
+      }
 
       // ─── วาด cursor indicator ถ้ากำลังลาก ─────────
       if (dragRef.current.isDragging) {

@@ -73,24 +73,13 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = {
 };
 
 // ─── FFmpeg Singleton ──────────────────────────────────
-// ใช้ toBlobURL เพื่อโหลด ffmpeg-core จาก local path
-// (เลี่ยง Web Worker path resolution issues กับ basePath)
-
-import { toBlobURL } from '@ffmpeg/util';
+// ใช้ CDN (unpkg) เพราะ Vercel มี timeout limit สำหรับไฟล์ 31MB
 
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoaded = false;
 let ffmpegLoadError: string | null = null;
 
-function getFFmpegCoreBase(): string {
-  if (typeof window === 'undefined') return '/';
-  const path = window.location.pathname;
-  const baseParts = path.split('/').filter(Boolean);
-  if (baseParts.length > 0 && baseParts[0] !== 'api') {
-    return `/${baseParts[0]}/ffmpeg-core`;
-  }
-  return '/ffmpeg-core';
-}
+const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
 
 async function getFFmpeg(): Promise<FFmpeg> {
   if (ffmpegLoaded && ffmpeg) return ffmpeg;
@@ -105,21 +94,13 @@ async function getFFmpeg(): Promise<FFmpeg> {
   });
 
   try {
-    const coreBase = getFFmpegCoreBase();
-    const workerBase = getFFmpegCoreBase().replace('/ffmpeg-core', '/worker');
-    console.log('[ffmpeg] Loading from:', coreBase);
-    
-    const coreBlobURL = await toBlobURL(`${coreBase}.js`, 'text/javascript');
-    const wasmBlobURL = await toBlobURL(`${coreBase}.wasm`, 'application/wasm');
-    const workerBlobURL = await toBlobURL(`${workerBase}.js`, 'text/javascript');
-    
+    console.log('[ffmpeg] Loading from CDN...');
     await ffmpeg.load({
-      coreURL: coreBlobURL,
-      wasmURL: wasmBlobURL,
-      classWorkerURL: workerBlobURL,
+      coreURL: `${FFMPEG_BASE}/ffmpeg-core.js`,
+      wasmURL: `${FFMPEG_BASE}/ffmpeg-core.wasm`,
     });
     ffmpegLoaded = true;
-    console.log('[ffmpeg] Loaded successfully');
+    console.log('[ffmpeg] Loaded from CDN');
     return ffmpeg;
   } catch (err) {
     ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';

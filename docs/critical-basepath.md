@@ -15,6 +15,12 @@
 - `/dashboard` → ต้องเป็น `/subzeed/dashboard`
 - ฯลฯ
 
+## สำคัญ
+ทุกการทำงานที่เกี่ยวกับ middleware หรือการอ้างอิงไฟล์อะไรต่างๆ "จำเป็น" ตองมี basepath
+เพราะ main website (overconda.space) กับ /subzeed/ อยู่คนละ location (คนละ project)
+แต่เชื่อมหาก้นด้วยการตั้งค่า setting ไม่ใช่ physical 
+**หากไม่มี basepath จะ error ได้**
+
 ---
 
 ## วิธีแก้ไขที่ถูกต้อง (ห้ามใช้วิธีอื่น)

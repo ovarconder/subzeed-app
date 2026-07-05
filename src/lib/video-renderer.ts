@@ -1,9 +1,8 @@
 // ============================================================
 // 🎥 Video Renderer — SubZeed
 // ============================================================
-// ใช้ FFmpeg.wasm (ฝั่ง Client) เพื่อสร้างวิดีโอ hardsub
-// แบบ NO-WORKER: import @ffmpeg/core โดยตรง ไม่ผ่าน @ffmpeg/ffmpeg
-// เพื่อเลี่ยง Web Worker path resolution issues ใน production
+// ใช้ @ffmpeg/core โดยตรง (NO WORKER) — ใช้ createFFmpegCore ผ่าน
+// script tag + wasm blob URL เพื่อเลี่ยง Web Worker issues
 // ============================================================
 
 import { fetchFile } from '@ffmpeg/util';
@@ -12,7 +11,6 @@ import type { SubtitleEntry, TextSegment, FontWeight } from './types';
 // ─── Types ──────────────────────────────────────────────
 
 export type ExportFormat = 'mp4' | 'webm' | 'mov' | 'gif';
-
 export type QualityPreset = 'best' | 'high' | 'medium' | 'fast';
 
 export interface RenderOptions {
@@ -47,14 +45,12 @@ const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   gifFrameSkip: 1,
 };
 
-// ─── Quality → CRF mapping ─────────────────────────────
-
 const CRF_MAP: Record<QualityPreset, number> = { best: 18, high: 23, medium: 28, fast: 35 };
 const VP9_CRF_MAP: Record<QualityPreset, number> = { best: 25, high: 30, medium: 35, fast: 40 };
 
 // ─── FFmpeg Singleton (NO WORKER) ──────────────────────
-// ใช้ createFFmpegCore จาก @ffmpeg/core โดยตรง
-// import() แบบ dynamic → worker-less
+// โหลด ffmpeg-core.js ผ่าน <script> tag (ไม่ผ่าน import() เพื่อเลี่ยง webpack)
+// แล้วเรียก createFFmpegCore() โดยส่ง wasm แยกผ่าน locateFile
 
 let ffmpegInstance: any = null;
 let ffmpegLoaded = false;
@@ -62,54 +58,77 @@ let ffmpegLoadError: string | null = null;
 
 const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
 
+// สัญญาณบอกว่า createFFmpegCore ถูก global script โหลดเสร็จ
+let coreScriptLoaded = false;
+let coreScriptResolve: (() => void) | null = null;
+
+function waitForCoreScript(): Promise<void> {
+  return new Promise((resolve) => {
+    if (coreScriptLoaded) { resolve(); return; }
+    coreScriptResolve = resolve;
+  });
+}
+
+// ประกาศ type สำหรับ createFFmpegCore ที่จะมาใน global scope
+declare global {
+  interface Window {
+    createFFmpegCore?: (opts: any) => Promise<any>;
+  }
+}
+
+function injectCoreScript(blobUrl: string): HTMLScriptElement {
+  const script = document.createElement('script');
+  script.src = blobUrl;
+  script.onload = () => {
+    coreScriptLoaded = true;
+    coreScriptResolve?.();
+    console.log('[ffmpeg] Core script loaded, createFFmpegCore available:', !!window.createFFmpegCore);
+  };
+  script.onerror = () => {
+    console.error('[ffmpeg] Core script load error');
+  };
+  document.head.appendChild(script);
+  return script;
+}
+
 async function ensureFFmpegLoaded(): Promise<any> {
   if (ffmpegLoaded && ffmpegInstance) return ffmpegInstance;
   if (ffmpegLoadError) throw new Error(`FFmpeg โหลดไม่สำเร็จ (ก่อนหน้า): ${ffmpegLoadError}`);
 
   try {
-    // 1. ดึง core.js จาก CDN
-    console.log('[ffmpeg] Loading core.js from CDN...');
+    // 1. โหลด core.js เป็น blob URL
+    console.log('[ffmpeg] Fetching core.js...');
     const coreResp = await fetch(`${FFMPEG_BASE}/ffmpeg-core.js`);
     const coreJs = await coreResp.text();
     const coreBlob = new Blob([coreJs], { type: 'text/javascript' });
     const coreBlobURL = URL.createObjectURL(coreBlob);
     
-    // 2. ดึง wasm จาก CDN
-    console.log('[ffmpeg] Loading wasm from CDN...');
+    // 2. โหลด wasm เป็น blob URL
+    console.log('[ffmpeg] Fetching wasm...');
     const wasmResp = await fetch(`${FFMPEG_BASE}/ffmpeg-core.wasm`);
     const wasmBuffer = await wasmResp.arrayBuffer();
     const wasmBlob = new Blob([wasmBuffer], { type: 'application/wasm' });
     const wasmBlobURL = URL.createObjectURL(wasmBlob);
     
-    // 3. import core.js (dynamic import ด้วย blob URL)
-    console.log('[ffmpeg] Importing core module...');
-    const coreModule = await import(/* @vite-ignore */ coreBlobURL);
-    const createFFmpeg: any = coreModule.default || coreModule.createFFmpegCore;
+    // 3. Inject core.js ผ่าน <script> (เลี่ยง dynamic import ที่ webpack ไม่ support)
+    console.log('[ffmpeg] Injecting core script...');
+    injectCoreScript(coreBlobURL);
+    await waitForCoreScript();
     
-    if (!createFFmpeg) {
-      const keys = Object.keys(coreModule);
-      console.log('[ffmpeg] Core exports:', keys);
-      // ลองใช้ตัวแรกที่เห็น
-      const found = keys.find(k => typeof coreModule[k] === 'function');
-      if (found) {
-        console.log('[ffmpeg] Using export:', found);
-        ffmpegInstance = await coreModule[found]({
-          mainScriptUrlOrBlob: wasmBlobURL,
-          locateFile: (path: string) => path.endsWith('.wasm') ? wasmBlobURL : path,
-        });
-      } else {
-        throw new Error('ไม่พบ createFFmpegCore export');
-      }
-    } else {
-      // 4. สร้าง instance
-      console.log('[ffmpeg] Creating FFmpeg instance...');
-      ffmpegInstance = await createFFmpeg({
-        mainScriptUrlOrBlob: wasmBlobURL,
-        locateFile: (path: string) => path.endsWith('.wasm') ? wasmBlobURL : path,
-      });
+    // 4. เรียก createFFmpegCore()
+    if (!window.createFFmpegCore) {
+      throw new Error('createFFmpegCore ไม่ถูกโหลด');
     }
     
-    // 5. ตั้งค่า log/progress
+    console.log('[ffmpeg] Creating FFmpeg instance...');
+    ffmpegInstance = await window.createFFmpegCore({
+      locateFile: (path: string) => {
+        if (path.endsWith('.wasm')) return wasmBlobURL;
+        return path;
+      },
+    });
+    
+    // 5. ตั้ง logger
     ffmpegInstance.setLogger((data: any) => {
       if (data.type === 'error') console.error('[ffmpeg]', data.message);
     });
@@ -124,7 +143,7 @@ async function ensureFFmpegLoaded(): Promise<any> {
   }
 }
 
-// ─── Wrapper (API เหมือน @ffmpeg/ffmpeg) ──────────────
+// ─── Wrapper ──────────────────────────────────────────
 
 class FFWrapper {
   private inst: any;
@@ -179,7 +198,6 @@ export async function renderVideoWithSubtitles(
     const inst = await ensureFFmpegLoaded();
     const ff = new FFWrapper(inst);
     onProgress?.(5);
-    console.log('[render] FFmpeg ready');
 
     onProgress?.(6);
     let videoData: Blob;
@@ -201,7 +219,9 @@ export async function renderVideoWithSubtitles(
 
     console.log('[render] Build ASS...');
     const ass = buildAss(subtitles, opts);
-    await ff.writeFile('subs.ass', ass);
+    // แปลง string → Uint8Array
+    const assBytes = new TextEncoder().encode(ass);
+    await ff.writeFile('subs.ass', assBytes);
     onProgress?.(12);
 
     const outName = `output.${ext}`;
@@ -309,12 +329,7 @@ function codecArgs(format: ExportFormat, quality: QualityPreset, hwAccel: boolea
 }
 
 function bitrateForQuality(quality: QualityPreset): number {
-  switch (quality) {
-    case 'best': return 8000;
-    case 'high': return 5000;
-    case 'medium': return 3000;
-    case 'fast': return 1500;
-  }
+  switch (quality) { case 'best': return 8000; case 'high': return 5000; case 'medium': return 3000; case 'fast': return 1500; }
 }
 
 function extOf(format: ExportFormat): string {
@@ -333,13 +348,11 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
   l.push('[V4+ Styles]');
   l.push('Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding');
   l.push(`Style: Default,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`);
-  l.push('');
-  l.push('[Events]');
+  l.push('');  l.push('[Events]');
   l.push('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
   subs.forEach((s) => {
     if (s.segments && s.segments.length > 0) {
-      const assText = s.segments.map(seg => segmentToAss(seg, opts)).join('');
-      l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${assText}`);
+      l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${s.segments.map(seg => segmentToAss(seg, opts)).join('')}`);
     } else {
       l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${s.text.replace(/\n/g, '\\N')}`);
     }
@@ -353,19 +366,16 @@ function segmentToAss(seg: TextSegment, opts: RenderOptions): string {
   tags.push(`\\c${hexToAssColor(st.color)}`);
   const alpha = Math.round((1 - st.opacity) * 255);
   tags.push(`\\alpha&H${alpha.toString(16).padStart(2, '0').toUpperCase()}&`);
-  const isBold = st.fontWeight === 'bold' || st.fontWeight === 'bold-italic';
-  const isItalic = st.fontWeight === 'italic' || st.fontWeight === 'bold-italic';
-  tags.push(`\\b${isBold ? '1' : '0'}`);
-  tags.push(`\\i${isItalic ? '1' : '0'}`);
+  const b = st.fontWeight === 'bold' || st.fontWeight === 'bold-italic';
+  const i = st.fontWeight === 'italic' || st.fontWeight === 'bold-italic';
+  tags.push(`\\b${b ? '1' : '0'}`, `\\i${i ? '1' : '0'}`);
   if (st.strokeWidth > 0 && st.strokeOpacity > 0) {
-    tags.push(`\\bord${st.strokeWidth}`);
-    tags.push(`\\3c${hexToAssColor(st.strokeColor)}`);
+    tags.push(`\\bord${st.strokeWidth}`, `\\3c${hexToAssColor(st.strokeColor)}`);
     const oa = Math.round((1 - st.strokeOpacity) * 255);
     tags.push(`\\3a&H${oa.toString(16).padStart(2, '0').toUpperCase()}&`);
   } else { tags.push('\\bord0'); }
   if (st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
-    tags.push(`\\shad${Math.max(1, Math.abs(st.shadowOffsetY))}`);
-    tags.push(`\\4c${hexToAssColor(st.shadowColor)}`);
+    tags.push(`\\shad${Math.max(1, Math.abs(st.shadowOffsetY))}`, `\\4c${hexToAssColor(st.shadowColor)}`);
     const sa = Math.round((1 - st.shadowOpacity) * 255);
     tags.push(`\\4a&H${sa.toString(16).padStart(2, '0').toUpperCase()}&`);
   } else { tags.push('\\shad0'); }
@@ -406,15 +416,15 @@ export function supportsHardwareAccel(): boolean {
 }
 
 export const EXPORT_FORMATS: { value: ExportFormat; label: string; mime: string }[] = [
-  { value: 'mp4',  label: 'MP4 (H.264)', mime: 'video/mp4' },
-  { value: 'webm', label: 'WebM (VP9)',  mime: 'video/webm' },
-  { value: 'mov',  label: 'MOV (H.264)', mime: 'video/quicktime' },
-  { value: 'gif',  label: 'GIF',         mime: 'image/gif' },
+  { value: 'mp4', label: 'MP4 (H.264)', mime: 'video/mp4' },
+  { value: 'webm', label: 'WebM (VP9)', mime: 'video/webm' },
+  { value: 'mov', label: 'MOV (H.264)', mime: 'video/quicktime' },
+  { value: 'gif', label: 'GIF', mime: 'image/gif' },
 ];
 
 export const QUALITY_PRESETS: { value: QualityPreset; label: string; desc: string }[] = [
-  { value: 'best',   label: 'ดีที่สุด',   desc: 'CRF 18, ช้าที่สุด' },
-  { value: 'high',   label: 'สูง',       desc: 'CRF 23, สมดุล' },
-  { value: 'medium', label: 'ปานกลาง',   desc: 'CRF 28, ไฟล์เล็ก' },
-  { value: 'fast',   label: 'เร็ว',      desc: 'CRF 35, เหมาะ preview' },
+  { value: 'best', label: 'ดีที่สุด', desc: 'CRF 18, ช้าที่สุด' },
+  { value: 'high', label: 'สูง', desc: 'CRF 23, สมดุล' },
+  { value: 'medium', label: 'ปานกลาง', desc: 'CRF 28, ไฟล์เล็ก' },
+  { value: 'fast', label: 'เร็ว', desc: 'CRF 35, เหมาะ preview' },
 ];

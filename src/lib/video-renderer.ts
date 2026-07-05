@@ -73,13 +73,19 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = {
 };
 
 // ─── FFmpeg Singleton ──────────────────────────────────
-// ใช้ CDN (unpkg) เพราะ Vercel มี timeout limit สำหรับไฟล์ 31MB
+// ใช้ CDN พร้อม classWorkerURL ที่ webpack bundle ให้
 
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoaded = false;
 let ffmpegLoadError: string | null = null;
 
 const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+
+// webpack จะ bundle worker.js นี้เป็น chunk แยก
+const workerUrl = new URL(
+  '../../node_modules/@ffmpeg/ffmpeg/dist/esm/worker.js',
+  import.meta.url,
+);
 
 async function getFFmpeg(): Promise<FFmpeg> {
   if (ffmpegLoaded && ffmpeg) return ffmpeg;
@@ -95,9 +101,11 @@ async function getFFmpeg(): Promise<FFmpeg> {
 
   try {
     console.log('[ffmpeg] Loading from CDN...');
+    console.log('[ffmpeg] Worker URL:', workerUrl.toString());
     await ffmpeg.load({
       coreURL: `${FFMPEG_BASE}/ffmpeg-core.js`,
       wasmURL: `${FFMPEG_BASE}/ffmpeg-core.wasm`,
+      classWorkerURL: workerUrl.toString(),
     });
     ffmpegLoaded = true;
     console.log('[ffmpeg] Loaded from CDN');

@@ -73,13 +73,24 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = {
 };
 
 // ─── FFmpeg Singleton ──────────────────────────────────
-// ใช้ CDN — hardcode URL (ไม่ใช้ toBlobURL เพื่อเลี่ยง Turbopack issue)
+// โฮสต์ ffmpeg-core.js + ffmpeg-core.wasm ใน public/ เพื่อเลี่ยง
+// CDN/CORS/basePath issues ใน production (Vercel)
 
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoaded = false;
 let ffmpegLoadError: string | null = null;
 
-const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+function getFFmpegCoreBase(): string {
+  if (typeof window === 'undefined') return '/';
+  // ใช้ location เพื่อหา basePath เช่น /subzeed/
+  const path = window.location.pathname;
+  // ถ้า path ขึ้นต้นด้วย /subzeed/ ให้ใช้ /subzeed/ffmpeg-core
+  const baseParts = path.split('/').filter(Boolean);
+  if (baseParts.length > 0 && baseParts[0] !== 'api') {
+    return `/${baseParts[0]}/ffmpeg-core`;
+  }
+  return '/ffmpeg-core';
+}
 
 async function getFFmpeg(): Promise<FFmpeg> {
   if (ffmpegLoaded && ffmpeg) return ffmpeg;
@@ -94,15 +105,17 @@ async function getFFmpeg(): Promise<FFmpeg> {
   });
 
   try {
+    const coreBase = getFFmpegCoreBase();
     await ffmpeg.load({
-      coreURL: `${FFMPEG_BASE}/ffmpeg-core.js`,
-      wasmURL: `${FFMPEG_BASE}/ffmpeg-core.wasm`,
+      coreURL: `${coreBase}.js`,
+      wasmURL: `${coreBase}.wasm`,
     });
     ffmpegLoaded = true;
-    console.log('[ffmpeg] Loaded from CDN');
+    console.log('[ffmpeg] Loaded from local:', coreBase);
     return ffmpeg;
   } catch (err) {
     ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[ffmpeg] Load failed:', ffmpegLoadError);
     throw new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${ffmpegLoadError}`);
   }
 }

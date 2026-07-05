@@ -73,20 +73,15 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = {
 };
 
 // ─── FFmpeg Singleton ──────────────────────────────────
-// ใช้ CDN + classWorkerURL แบบ path สัมพัทธ์ (ผ่าน api() helper)
+// ใช้ toBlobURL() ตาม official docs ของ @ffmpeg/ffmpeg
+
+import { toBlobURL } from '@ffmpeg/util';
 
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoaded = false;
 let ffmpegLoadError: string | null = null;
 
 const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
-
-// หา basePath จาก window.location (ใช้แทน api() เพราะไฟล์นี้ไม่มี access)
-function getBasePath(): string {
-  if (typeof window === 'undefined') return '';
-  const parts = window.location.pathname.split('/').filter(Boolean);
-  return parts.length > 0 && parts[0] !== 'api' ? `/${parts[0]}` : '';
-}
 
 async function getFFmpeg(): Promise<FFmpeg> {
   if (ffmpegLoaded && ffmpeg) return ffmpeg;
@@ -101,20 +96,25 @@ async function getFFmpeg(): Promise<FFmpeg> {
   });
 
   try {
-    const base = getBasePath();
-    console.log('[ffmpeg] Loading from CDN...');
-    console.log('[ffmpeg] Base path:', base);
+    const baseURL = FFMPEG_BASE;
+    console.log('[ffmpeg] Loading from CDN:', baseURL);
     
-    await ffmpeg.load({
-      coreURL: `${FFMPEG_BASE}/ffmpeg-core.js`,
-      wasmURL: `${FFMPEG_BASE}/ffmpeg-core.wasm`,
-    });
+    const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
+    const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+    
+    console.log('[ffmpeg] core blob:', coreURL?.slice(0, 60));
+    console.log('[ffmpeg] wasm blob:', wasmURL?.slice(0, 60));
+    
+    await ffmpeg.load({ coreURL, wasmURL });
     ffmpegLoaded = true;
-    console.log('[ffmpeg] Loaded from CDN');
+    console.log('[ffmpeg] Loaded successfully');
     return ffmpeg;
   } catch (err) {
     ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';
     console.error('[ffmpeg] Load failed:', ffmpegLoadError);
+    if (err instanceof Error && err.stack) {
+      console.error('[ffmpeg] Stack:', err.stack.slice(0, 300));
+    }
     throw new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${ffmpegLoadError}`);
   }
 }

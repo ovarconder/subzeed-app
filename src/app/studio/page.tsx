@@ -480,42 +480,85 @@ export default function StudioPage() {
     setIsExporting(true);
     setExportProgress(0);
 
-    try {
-      const blob = await renderVideoWithSubtitles(
-        store.videoUrl,
-        store.subtitles,
-        {
-          fontFamily: selectedFontFamily,
-          fontSize: selectedFontSize,
-          y_offset: 80,
-          format: exportFormat,
-          position: 'bottom',
-          quality: exportQuality,
-          useHardwareAccel,
-          gifMaxWidth,
-          gifFrameSkip: exportFormat === 'gif' ? 1 : 0,
-          fps: exportFormat === 'gif' ? 10 : 30,
-        },
-        (pct) => setExportProgress(pct),
-      );
+    // ─── Retry up to 3 times ─────────────────────────────
+    const MAX_RETRIES = 3;
+    let lastError: any = null;
 
-      const baseName = store.videoFile?.name?.replace(/\.[^.]+$/, '') || 'subzeed-video';
-      downloadVideoBlob(blob, `${baseName}-subzeed.${exportFormat}`);
-      setIsExporting(false);
-      addToast(`ดาวน์โหลดวิดีโอ (${exportFormat.toUpperCase()}) ที่ฝังซับแล้ว!`, 'success');
-      setExportProgress(0);
-    } catch (err: any) {
-      const msg = err.message || '';
-      console.error('[Export] ERROR in handleExportVideo:', { msg, fullError: err, stack: err.stack?.slice(0, 300) });
-      setIsExporting(false);
-      setExportProgress(0);
-      if (msg.includes('FFmpeg') || msg.includes('ffmpeg')) {
-        addToast(`⚠️ FFmpeg โหลดไม่สำเร็จ — ลองรีเฟรชหน้าหรือเปลี่ยนอินเทอร์เน็ต`, 'error');
-      } else if (msg.includes('HTTP') || msg.includes('fetch')) {
-        addToast(`⚠️ ไม่สามารถเข้าถึงไฟล์วิดีโอ — ลองเลือกวิดีโอใหม่`, 'error');
-      } else {
-        addToast(`ส่งออกวิดีโอไม่สำเร็จ: ${msg.slice(0, 120)}`, 'error');
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        if (attempt > 1) {
+          console.log(`[Export] Retry attempt ${attempt}/${MAX_RETRIES}...`);
+          addToast(`🔄 ลองใหม่อีกครั้ง (ครั้งที่ ${attempt}/${MAX_RETRIES})...`, 'info');
+          setExportProgress(0);
+        }
+
+        const blob = await renderVideoWithSubtitles(
+          store.videoUrl,
+          store.subtitles,
+          {
+            fontFamily: selectedFontFamily,
+            fontSize: selectedFontSize,
+            y_offset: 80,
+            format: exportFormat,
+            position: 'bottom',
+            quality: exportQuality,
+            useHardwareAccel,
+            gifMaxWidth,
+            gifFrameSkip: exportFormat === 'gif' ? 1 : 0,
+            fps: exportFormat === 'gif' ? 10 : 30,
+          },
+          (pct) => setExportProgress(pct),
+        );
+
+        // ✅ สำเร็จ!
+        const baseName = store.videoFile?.name?.replace(/\.[^.]+$/, '') || 'subzeed-video';
+        downloadVideoBlob(blob, `${baseName}-subzeed.${exportFormat}`);
+        setIsExporting(false);
+        addToast(`ดาวน์โหลดวิดีโอ (${exportFormat.toUpperCase()}) ที่ฝังซับแล้ว!`, 'success');
+        setExportProgress(0);
+        return; // ← ออกจาก function ทันที
+
+      } catch (err: any) {
+        lastError = err;
+        const msg = err.message || '';
+
+        // ถ้าไม่ใช่ timeout error → ไม่ต้อง retry
+        const isTimeOut = msg.includes('ไม่เสร็จภายใน') || msg.includes('timeout');
+        if (!isTimeOut) {
+          break; // ออกจาก loop
+        }
+
+        console.warn(`[Export] Attempt ${attempt}/${MAX_RETRIES} failed:`, msg.slice(0, 100));
+
+        // ถ้ายังไม่ถึง MAX_RETRIES → รอ 2 วิแล้วลองใหม่
+        if (attempt < MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, 2000));
+        }
       }
+    }
+
+    // ❌ ทุกครั้งล้มเหลว — แสดง persistent toast
+    const msg = lastError?.message || '';
+    console.error('[Export] ERROR after all retries:', {
+      msg,
+      fullError: lastError,
+      stack: lastError?.stack?.slice(0, 300),
+    });
+    setIsExporting(false);
+    setExportProgress(0);
+
+    if (msg.includes('FFmpeg') || msg.includes('ffmpeg') || msg.includes('timeout') || msg.includes('ไม่เสร็จภายใน')) {
+      // ⏰ Toast แบบค้าง — ต้องกดปิด
+      addToast(
+        `⏰ การส่งวิดีโอใช้เวลานานเกินไป และลองใหม่แล้ว ${MAX_RETRIES} ครั้งยังไม่สำเร็จ` +
+        `\nลองรีเฟรชหน้า หรือเปลี่ยนการตั้งค่า (ลดคุณภาพ/เปลี่ยน Format) แล้วลองอีกครั้ง`,
+        'error',
+        true, // persistent
+      );
+    } else if (msg.includes('HTTP') || msg.includes('fetch')) {
+      addToast(`⚠️ ไม่สามารถเข้าถึงไฟล์วิดีโอ — ลองเลือกวิดีโอใหม่`, 'error');
+    } else {
+      addToast(`ส่งออกวิดีโอไม่สำเร็จ: ${msg.slice(0, 120)}`, 'error');
     }
   };
 

@@ -96,12 +96,12 @@ export const useSubtitleStore = create<SubtitleState>((set) => ({
   selectSubtitle: (id) => set({ selectedSubtitleId: id }),
 
   setVideoFile: (file) => {
-    // Revoke old URL
+    // ไม่สร้าง URL ที่นี่ — ปล่อยให้ useVideoStorage จัดการ
+    // เพื่อไม่ให้ URL ซ้อนทับกัน
     if (file) {
-      const url = URL.createObjectURL(file);
-      return set({ videoFile: file, videoUrl: url });
+      return set({ videoFile: file });
     }
-    return set({ videoFile: null, videoUrl: null });
+    return set({ videoFile: null });
   },
 
   setVideoUrl: (url) => set({ videoUrl: url }),

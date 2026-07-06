@@ -69,21 +69,32 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = {
 };
 
 // ─── CDN Base URL (ปักหมุดเวอร์ชันให้ตรงกับ package.json) ──
-// @ffmpeg/core@0.12.10 ต้องตรงกับ @ffmpeg/ffmpeg ที่ใช้
+// @ffmpeg/core@0.12.10 ต้องตรงกับ @ffmpeg/ffmpeg@0.12.10 ที่ใช้
 
 const CDN_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
-const FFMPEG_CDN_BASE = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm';
+const FFMPEG_CDN_BASE = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
 
 // ─── FFmpeg Singleton ──────────────────────────────────
 // โหลดครั้งเดียว เก็บไว้ reuse กัน race condition
+// timeout 30 วิ — ไม่ให้ค้าง indefinitely
 
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
 let ffmpegLoadError: string | null = null;
+let ffmpegLoadAborted = false;
+
+const FFMPEG_LOAD_TIMEOUT_MS = 45_000; // 45 วิ
 
 async function getFFmpeg(): Promise<FFmpeg> {
   // ถ้าโหลดสำเร็จแล้ว → return ทันที
   if (ffmpeg) return ffmpeg;
+
+  // ถ้าถูกยกเลิก (timeout) → ให้ลองใหม่
+  if (ffmpegLoadAborted) {
+    ffmpegLoadAborted = false;
+    ffmpegLoadError = null;
+    ffmpegLoadPromise = null;
+  }
 
   // ถ้าโหลดไม่สำเร็จก่อนหน้า → throw ทันที
   if (ffmpegLoadError) {
@@ -97,13 +108,13 @@ async function getFFmpeg(): Promise<FFmpeg> {
   ffmpegLoadPromise = (async () => {
     const instance = new FFmpeg();
 
-    // ตั้ง logger
+    // ตั้ง logger ที่ debug level (เห็นทุกข้อความ)
     instance.on('log', ({ type, message }) => {
-      if (type === 'error') console.error('[ffmpeg]', message);
+      console.log('[ffmpeg:log]', type === 'error' ? '❌' : 'ℹ️', message);
     });
 
     try {
-      // แปลง 3 asset เป็น Blob URL ที่ runtime
+      // 1. เตรียม Blob URLs
       console.log('[ffmpeg] Fetching core.js...');
       const coreBlobURL = await toBlobURL(`${CDN_BASE}/ffmpeg-core.js`, 'text/javascript');
 
@@ -113,19 +124,31 @@ async function getFFmpeg(): Promise<FFmpeg> {
       console.log('[ffmpeg] Fetching worker.js (of @ffmpeg/ffmpeg)...');
       const workerBlobURL = await toBlobURL(`${FFMPEG_CDN_BASE}/worker.js`, 'text/javascript');
 
+      // 2. โหลด FFmpeg.wasm พร้อม timeout
       console.log('[ffmpeg] Calling ffmpeg.load() with Blob URLs...');
-      await instance.load({
+      
+      const loadPromise = instance.load({
         coreURL: coreBlobURL,
         wasmURL: wasmBlobURL,
         classWorkerURL: workerBlobURL,
       });
 
+      // Race condition: load vs timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`FFmpeg.load() ไม่เสร็จภายใน ${FFMPEG_LOAD_TIMEOUT_MS/1000} วินาที`)), FFMPEG_LOAD_TIMEOUT_MS);
+      });
+
+      await Promise.race([loadPromise, timeoutPromise]);
+
       ffmpeg = instance;
-      console.log('[ffmpeg] FFmpeg ready');
+      console.log('[ffmpeg] ✅ FFmpeg ready');
       return instance;
     } catch (err) {
       ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[ffmpeg] Load failed:', ffmpegLoadError);
+      ffmpegLoadAborted = true;
+      console.error('[ffmpeg] ❌ Load failed:', ffmpegLoadError);
+      // cleanup
+      try { instance.terminate?.(); } catch {}
       throw new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${ffmpegLoadError}`);
     }
   })();

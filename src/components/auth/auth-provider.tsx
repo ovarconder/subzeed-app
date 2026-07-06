@@ -1,9 +1,10 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import type { Session, User, AuthChangeEvent } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import type { Profile } from '@/lib/types';
+import { api } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -32,18 +33,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const supabase = createClient();
+  const focusCB = useRef<(() => void) | null>(null);
 
-  const fetchProfile = async (userId: string) => {
-    const result: { data: Profile | null } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    if (result.data) setProfile(result.data);
-  };
+  // ─── เปลี่ยนเป็น useCallback + ใช้ API route แทน Supabase ตรงๆ ──
+  const fetchProfile = useCallback(async (userId: string) => {
+    try {
+      const res = await fetch(api('/api/profile'), {
+        headers: { 'x-user-id': userId },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data?.profile) setProfile(data.profile);
+    } catch (e) {
+      console.error('[AuthProvider] fetchProfile error:', e);
+    }
+  }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     supabase.auth.getSession().then((result: { data: { session: Session | null } }) => {
+      if (cancelled) return;
       const s = result.data.session;
       setSession(s);
       setUser(s?.user ?? null);
@@ -58,19 +68,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       else setProfile(null);
     });
 
-    // ─── Refresh profile เมื่อ window focus เพื่อให้ค่าสดเสมอ ──
+    // ─── ใช้ throttle ป้องกันเรียกซ้ำถี่เกินไปตอน focus ──
+    let focusTimer: ReturnType<typeof setTimeout> | null = null;
     const onFocus = () => {
-      supabase.auth.getSession().then((result: { data: { session: Session | null } }) => {
-        if (result.data.session?.user) fetchProfile(result.data.session.user.id);
-      });
+      if (focusTimer) clearTimeout(focusTimer);
+      focusTimer = setTimeout(() => {
+        supabase.auth.getSession().then((result: { data: { session: Session | null } }) => {
+          if (result.data.session?.user) fetchProfile(result.data.session.user.id);
+        });
+      }, 1000); // ← throttle 1 วินาที
     };
+    focusCB.current = onFocus;
     window.addEventListener('focus', onFocus);
 
     return () => {
+      cancelled = true;
       subscription.unsubscribe();
       window.removeEventListener('focus', onFocus);
+      if (focusTimer) clearTimeout(focusTimer);
     };
-  }, []);
+  }, [fetchProfile]);
 
   const signOut = async () => {
     try {
@@ -92,4 +109,3 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
-

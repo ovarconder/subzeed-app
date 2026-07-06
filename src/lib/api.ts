@@ -3,7 +3,7 @@
  * รองรับ basePath เช่น "/subzeed" ใน production
  */
 
-function getBasePath(): string {
+export function getBasePath(): string {
   if (typeof window === 'undefined') return '';
 
   // ลองอ่านจาก __NEXT_DATA__

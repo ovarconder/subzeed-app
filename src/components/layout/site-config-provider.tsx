@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { SiteConfig } from '@/lib/site-config';
+import { getBasePath } from '@/lib/api';
 
 // ============================================================
 // 🧩 SiteConfigProvider — inject site config จาก DB สู่ Client
@@ -17,8 +18,8 @@ const defaultConfig: SiteConfig = {
     name: 'SubZeed',
     tagline: 'ซับซี๊ด',
     slogan: 'สร้างซับไตเติลภาษาไทย อัตโนมัติ ด้วย AI',
-    logo: '/subzeed/logo.svg',
-    logoMobile: '/subzeed/logo-mobile.svg',
+    logo: getBasePath() + '/logo.svg',
+    logoMobile: getBasePath() + '/logo-mobile.svg',
     favicon: '/favicon.ico',
     logoText: 'SubZeed',
     showLogoText: true,

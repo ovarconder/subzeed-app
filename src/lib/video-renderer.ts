@@ -121,16 +121,23 @@ async function getFFmpeg(): Promise<FFmpeg> {
       console.log('[ffmpeg] Fetching core.wasm...');
       const wasmBlobURL = await toBlobURL(`${CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm');
 
-      console.log('[ffmpeg] Fetching worker.js (of @ffmpeg/ffmpeg)...');
-      const workerBlobURL = await toBlobURL(`${FFMPEG_CDN_BASE}/worker.js`, 'text/javascript');
+      // 2. ไม่ใช้ classWorkerURL — @ffmpeg/ffmpeg จะใช้ single-thread mode
+      //    ซึ่งไม่ต้องพึ่ง SharedArrayBuffer / COOP+COEP headers
+      //    เหมาะกับ production ที่ server ยังไม่ได้ตั้ง Cross-Origin Isolation
+      //    core.js + wasm ใช้ Blob URL (toBlobURL) เพื่อเลี่ยง CORS
+      console.log('[ffmpeg] Using single-thread mode (no classWorkerURL)...');
 
-      // 2. โหลด FFmpeg.wasm พร้อม timeout
-      console.log('[ffmpeg] Calling ffmpeg.load() with Blob URLs...');
+      // 3. โหลด FFmpeg.wasm พร้อม timeout
+      console.log('[ffmpeg] Calling ffmpeg.load() with', {
+        coreURL: 'blob:...',
+        wasmURL: 'blob:...',
+        classWorkerURL: 'none (single-thread)',
+      });
       
       const loadPromise = instance.load({
         coreURL: coreBlobURL,
         wasmURL: wasmBlobURL,
-        classWorkerURL: workerBlobURL,
+        // ไม่ส่ง classWorkerURL → fallback เป็น single-thread
       });
 
       // Race condition: load vs timeout

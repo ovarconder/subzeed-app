@@ -495,11 +495,16 @@ export function downloadVideoBlob(blob: Blob, filename: string = 'subzeed-video.
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** ตรวจสอบว่า browser รองรับ hardware acceleration (VideoToolbox) หรือไม่ */
+/** ตรวจสอบว่า browser รองรับ hardware acceleration (VideoToolbox) หรือไม่
+ * หมายเหตุ: FFmpeg.wasm (compiled with emscripten) ไม่มี h264_videotoolbox 
+ * ดังนั้นใน WASM context ห้ามใช้ hardware accel — fallback เป็น libx264 เสมอ */
 export function supportsHardwareAccel(): boolean {
+  // FFmpeg.wasm ไม่รองรับ h264_videotoolbox (native macOS encoder)
+  // เช็คจาก user agent ว่าใช้ WASM build หรือไม่
   if (typeof window === 'undefined') return false;
-  const isMac = navigator.platform?.toLowerCase().includes('mac');
-  return isMac;
+  // WASM FFmpeg ไม่มี hardware encoder → return false เสมอ
+  // (ในอนาคตถ้าเปลี่ยนเป็น native FFmpeg ถึงจะรองรับ)
+  return false;
 }
 
 export const EXPORT_FORMATS: { value: ExportFormat; label: string; mime: string }[] = [

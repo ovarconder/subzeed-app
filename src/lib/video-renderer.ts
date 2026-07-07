@@ -91,11 +91,19 @@ const FFMPEG_CDN_BASE = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm';
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
 let ffmpegLoadError: string | null = null;
+/** ตัว reject ของ promise ที่กำลังโหลด — ใช้ยกเลิกการโหลดระหว่างทาง */
+let _loadReject: ((reason: string) => void) | null = null;
+
 /** ฟังก์ชันยกเลิก FFmpeg: terminate instance + รีเซ็ต singleton */
 export function terminateFFmpeg() {
   if (ffmpeg) {
     try { ffmpeg.terminate(); } catch {}
     ffmpeg = null;
+  }
+  // reject promise ที่กำลังโหลด (ถ้ามี)
+  if (_loadReject) {
+    _loadReject('ABORTED');
+    _loadReject = null;
   }
   ffmpegLoadPromise = null;
   ffmpegLoadError = null;
@@ -113,8 +121,10 @@ async function getFFmpeg(): Promise<FFmpeg> {
   // ถ้ากำลังโหลดอยู่ → รอ promise เดิม (กัน race condition)
   if (ffmpegLoadPromise) return ffmpegLoadPromise;
 
-  // เริ่มโหลด
-  ffmpegLoadPromise = (async () => {
+  // เริ่มโหลด — ใช้ Promise ที่ controll ได้ (มี _loadReject)
+  ffmpegLoadPromise = new Promise<FFmpeg>(async (resolve, reject) => {
+    _loadReject = reject;
+
     const instance = new FFmpeg();
 
     // ตั้ง logger
@@ -126,12 +136,15 @@ async function getFFmpeg(): Promise<FFmpeg> {
       // แปลง 3 asset เป็น Blob URL ที่ runtime
       console.log('[ffmpeg] Fetching core.js...');
       const coreBlobURL = await toBlobURL(`${CDN_BASE}/ffmpeg-core.js`, 'text/javascript');
+      if (_loadReject === null) throw new Error('ABORTED');
 
       console.log('[ffmpeg] Fetching core.wasm...');
       const wasmBlobURL = await toBlobURL(`${CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm');
+      if (_loadReject === null) throw new Error('ABORTED');
 
       console.log('[ffmpeg] Fetching worker.js (of @ffmpeg/ffmpeg)...');
       const workerBlobURL = await toBlobURL(`${FFMPEG_CDN_BASE}/worker.js`, 'text/javascript');
+      if (_loadReject === null) throw new Error('ABORTED');
 
       console.log('[ffmpeg] Calling ffmpeg.load() with Blob URLs...');
       await instance.load({
@@ -139,16 +152,26 @@ async function getFFmpeg(): Promise<FFmpeg> {
         wasmURL: wasmBlobURL,
         classWorkerURL: workerBlobURL,
       });
+      if (_loadReject === null) throw new Error('ABORTED');
 
       ffmpeg = instance;
+      _loadReject = null; // clear เพื่อไม่ให้ reject หลังโหลดเสร็จ
       console.log('[ffmpeg] FFmpeg ready');
-      return instance;
+      resolve(instance);
     } catch (err) {
-      ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';
+      _loadReject = null;
+      // ถ้า ABORTED → ไม่เซ็ต ffmpegLoadError
+      const msg = err instanceof Error ? err.message : '';
+      if (msg === 'ABORTED') {
+        ffmpegLoadPromise = null; // รีเซ็ต promise slot
+        reject(new Error('ABORTED'));
+        return;
+      }
+      ffmpegLoadError = msg || 'Unknown error';
       console.error('[ffmpeg] Load failed:', ffmpegLoadError);
-      throw new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${ffmpegLoadError}`);
+      reject(new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${ffmpegLoadError}`));
     }
-  })();
+  });
 
   return ffmpegLoadPromise;
 }

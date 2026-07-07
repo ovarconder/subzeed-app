@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { SubtitleItem } from '@/components/studio/subtitle-item';
 import { SubtitleSettingsBar } from '@/components/studio/subtitle-settings-bar';
 import { InteractiveCanvasOverlay } from '@/components/studio/interactive-canvas-overlay';
-import { renderVideoWithSubtitles, downloadVideoBlob, EXPORT_FORMATS, QUALITY_PRESETS, supportsHardwareAccel } from '@/lib/video-renderer';
+import { renderVideoWithSubtitles, downloadVideoBlob, EXPORT_FORMATS, QUALITY_PRESETS, supportsHardwareAccel, terminateFFmpeg } from '@/lib/video-renderer';
 import type { ExportFormat, QualityPreset } from '@/lib/video-renderer';
 import { createClient } from '@/lib/supabase/client';
 import { useVideoStorage } from '@/lib/hooks/use-video-storage';
@@ -122,6 +122,9 @@ export default function StudioPage() {
   // -- Export Video State --
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const exportingRef = useRef(false); // sync state สำหรับ callback
+  exportingRef.current = isExporting;
   const [exportFormat, setExportFormat] = useState<ExportFormat>('mp4');
   const [exportQuality, setExportQuality] = useState<QualityPreset>('high');
   const [useHardwareAccel, setUseHardwareAccel] = useState(supportsHardwareAccel());
@@ -477,6 +480,10 @@ export default function StudioPage() {
       return;
     }
 
+    // สร้าง AbortController สำหรับยกเลิก
+    const ac = new AbortController();
+    abortControllerRef.current = ac;
+
     setIsExporting(true);
     setExportProgress(0);
 
@@ -508,9 +515,11 @@ export default function StudioPage() {
             fps: exportFormat === 'gif' ? 10 : 30,
           },
           (pct) => setExportProgress(pct),
+          ac.signal, // ✅ ส่ง abort signal
         );
 
         // ✅ สำเร็จ!
+        abortControllerRef.current = null;
         const baseName = store.videoFile?.name?.replace(/\.[^.]+$/, '') || 'subzeed-video';
         downloadVideoBlob(blob, `${baseName}-subzeed.${exportFormat}`);
         setIsExporting(false);
@@ -521,6 +530,16 @@ export default function StudioPage() {
       } catch (err: any) {
         lastError = err;
         const msg = err.message || '';
+
+        // ✅ ถ้าผู้ใช้กดยกเลิก → ออกทันที ไม่ต้อง retry
+        if (msg === 'ABORTED' || ac.signal.aborted) {
+          console.log('[Export] Cancelled by user');
+          setIsExporting(false);
+          setExportProgress(0);
+          abortControllerRef.current = null;
+          addToast('ยกเลิกการเรนเดอร์แล้ว', 'info');
+          return;
+        }
 
         // ถ้าไม่ใช่ timeout error → ไม่ต้อง retry
         const isTimeOut = msg.includes('ไม่เสร็จภายใน') || msg.includes('timeout');
@@ -546,9 +565,9 @@ export default function StudioPage() {
     });
     setIsExporting(false);
     setExportProgress(0);
+    abortControllerRef.current = null;
 
     if (msg.includes('FFmpeg') || msg.includes('ffmpeg') || msg.includes('timeout') || msg.includes('ไม่เสร็จภายใน')) {
-      // ⏰ Toast แบบค้าง — ต้องกดปิด
       addToast(
         `⏰ การส่งวิดีโอใช้เวลานานเกินไป และลองใหม่แล้ว ${MAX_RETRIES} ครั้งยังไม่สำเร็จ` +
         `\nลองรีเฟรชหน้า หรือเปลี่ยนการตั้งค่า (ลดคุณภาพ/เปลี่ยน Format) แล้วลองอีกครั้ง`,
@@ -559,6 +578,18 @@ export default function StudioPage() {
       addToast(`⚠️ ไม่สามารถเข้าถึงไฟล์วิดีโอ — ลองเลือกวิดีโอใหม่`, 'error');
     } else {
       addToast(`ส่งออกวิดีโอไม่สำเร็จ: ${msg.slice(0, 120)}`, 'error');
+    }
+  };
+
+  /** ยกเลิกการ render */
+  const handleCancelExport = () => {
+    console.log('[Export] handleCancelExport called', { hasController: !!abortControllerRef.current });
+    // 1. terminate FFmpeg instance (global) — kill การทำงานทันที
+    terminateFFmpeg();
+    // 2. abort signal — ทำให้ Promise.race reject
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
   };
 
@@ -881,9 +912,17 @@ export default function StudioPage() {
                   {isExporting ? (
                     <div className="text-center">
                       <p className="text-xs text-text-secondary mb-1">กำลังเรนเดอร์วิดีโอ {exportProgress}%</p>
-                      <div className="w-full h-1.5 bg-border rounded-full overflow-hidden">
+                      <div className="w-full h-1.5 bg-border rounded-full overflow-hidden mb-3">
                         <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${exportProgress}%` }} />
                       </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-red-500 border-red-200 hover:bg-red-50"
+                        onClick={handleCancelExport}
+                      >
+                        ✕ ยกเลิก
+                      </Button>
                     </div>
                   ) : (
                     <>

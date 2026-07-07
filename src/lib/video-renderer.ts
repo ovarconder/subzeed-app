@@ -91,6 +91,15 @@ const FFMPEG_CDN_BASE = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm';
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
 let ffmpegLoadError: string | null = null;
+/** ฟังก์ชันยกเลิก FFmpeg: terminate instance + รีเซ็ต singleton */
+export function terminateFFmpeg() {
+  if (ffmpeg) {
+    try { ffmpeg.terminate(); } catch {}
+    ffmpeg = null;
+  }
+  ffmpegLoadPromise = null;
+  ffmpegLoadError = null;
+}
 
 async function getFFmpeg(): Promise<FFmpeg> {
   // ถ้าโหลดสำเร็จแล้ว → return ทันที
@@ -159,77 +168,89 @@ export async function renderVideoWithSubtitles(
   // เช็ค abort ก่อนเริ่ม
   if (signal?.aborted) throw new Error('ABORTED');
 
-  // 1. Load FFmpeg
-  onProgress?.(2);
-  const ff = await getFFmpeg();
-  if (signal?.aborted) { throw new Error('ABORTED'); }
-
-  onProgress?.(5);
-
-  // 2. Get video data
-  let videoData: Blob;
-  if (typeof videoBlobOrUrl === 'string') {
-    const resp = await fetch(videoBlobOrUrl);
-    if (!resp.ok) throw new Error(`โหลดวิดีโอไม่สำเร็จ (HTTP ${resp.status})`);
-    videoData = await resp.blob();
-  } else {
-    videoData = videoBlobOrUrl;
+  // ─── ตั้ง abort listener ตั้งแต่ก่อน getFFmpeg() ─────
+  // เพื่อให้ abort ทำงานได้แม้ระหว่างโหลด
+  let abortReject: ((reason: string) => void) | null = null;
+  const onAbort = () => {
+    terminateFFmpeg(); // kill instance ที่กำลังโหลดหรือกำลัง render
+    abortReject?.('ABORTED');
+  };
+  if (signal) {
+    // ถ้าถูก abort ไปแล้ว → reject ทันที
+    if (signal.aborted) throw new Error('ABORTED');
+    signal.addEventListener('abort', onAbort, { once: true });
   }
-  if (videoData.size === 0) throw new Error('ไฟล์วิดีโอว่างเปล่า');
-  if (signal?.aborted) { throw new Error('ABORTED'); }
-  onProgress?.(8);
 
-  // 3. (Optional) ดาวน์โหลดฟอนต์ไทยถ้าฟอนต์ที่ใช้เป็น Noto Sans Thai
-  const needsThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
-    subtitles.some(s => s.segments?.some(seg => seg.style.fontFamily === FONT_FAMILY_NAME));
-  if (needsThaiFont) {
-    try { await ff.createDir(FONT_VFS_DIR); } catch { /* ignore */ }
-    try { await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL)); } catch {}
-  }
-  if (signal?.aborted) { throw new Error('ABORTED'); }
-
-  // 4. Build ASS subtitle
-  const ass = buildAss(subtitles, opts);
-
-  // 5. เขียนไฟล์เข้าระบบ virtual FS
-  const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
-  const assName = 'subs.ass';
-  const outName = `output.${ext}`;
-
-  await ff.writeFile(inName, await fetchFile(videoData));
-  await ff.writeFile(assName, new TextEncoder().encode(ass));
-  if (signal?.aborted) { throw new Error('ABORTED'); }
-  onProgress?.(12);
-
-  // Progress callback
-  ff.on('progress', ({ progress: pct }) => {
-    const mapped = Math.min(12 + Math.round(pct * 83), 95);
-    onProgress?.(mapped);
-  });
-
-  // ตั้ง AbortListener → terminate FFmpeg process (kill การทำงาน)
-  const abortPromise = new Promise<never>((_, reject) => {
-    if (signal?.aborted) return reject(new Error('ABORTED'));
-    signal?.addEventListener('abort', () => {
-      try { ff.terminate(); } catch {}
-      // รีเซ็ต singleton เพื่อให้ครั้งหน้าสามารถโหลด FFmpeg ใหม่ได้
-      ffmpeg = null;
-      ffmpegLoadPromise = null;
-      ffmpegLoadError = null;
-      reject(new Error('ABORTED'));
-    }, { once: true });
-  });
+  const checkAborted = () => {
+    if (signal?.aborted) {
+      throw new Error('ABORTED');
+    }
+  };
 
   try {
-    // 6. Build arguments — race ff.exec() กับ abortPromise
+    // 1. Load FFmpeg
+    onProgress?.(2);
+    const ff = await getFFmpeg();
+    checkAborted();
+
+    onProgress?.(5);
+
+    // 2. Get video data
+    let videoData: Blob;
+    if (typeof videoBlobOrUrl === 'string') {
+      const resp = await fetch(videoBlobOrUrl);
+      if (!resp.ok) throw new Error(`โหลดวิดีโอไม่สำเร็จ (HTTP ${resp.status})`);
+      videoData = await resp.blob();
+    } else {
+      videoData = videoBlobOrUrl;
+    }
+    if (videoData.size === 0) throw new Error('ไฟล์วิดีโอว่างเปล่า');
+    checkAborted();
+    onProgress?.(8);
+
+    // 3. (Optional) ดาวน์โหลดฟอนต์ไทย
+    const needsThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
+      subtitles.some(s => s.segments?.some(seg => seg.style.fontFamily === FONT_FAMILY_NAME));
+    if (needsThaiFont) {
+      try { await ff.createDir(FONT_VFS_DIR); } catch { /* ignore */ }
+      try { await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL)); } catch {}
+    }
+    checkAborted();
+
+    // 4. Build ASS subtitle
+    const ass = buildAss(subtitles, opts);
+
+    // 5. เขียนไฟล์เข้าระบบ virtual FS
+    const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
+    const assName = 'subs.ass';
+    const outName = `output.${ext}`;
+
+    await ff.writeFile(inName, await fetchFile(videoData));
+    await ff.writeFile(assName, new TextEncoder().encode(ass));
+    checkAborted();
+    onProgress?.(12);
+
+    // Progress callback
+    ff.on('progress', ({ progress: pct }) => {
+      const mapped = Math.min(12 + Math.round(pct * 83), 95);
+      onProgress?.(mapped);
+    });
+
+    // 6. Exec FFmpeg command — race กับ abort
+    // ใช้ Promise.race เพื่อให้ abort reject ได้ทันที (ถึงแม้ ff.exec() จะไม่ reject)
     const execPromise = opts.format === 'gif'
       ? renderGif(ff, inName, outName, opts)
       : renderVideo(ff, inName, outName, opts);
 
-    await Promise.race([execPromise, abortPromise]);
+    const abortRacePromise = new Promise<never>((_, reject) => {
+      abortReject = reject;
+      // ถ้า abort ไปแล้วตอนนี้
+      if (signal?.aborted) reject('ABORTED');
+      // onAbort จะเรียก abortReject ด้วย
+    });
 
-    // เช็ค abort หลัง render เสร็จ (เผื่อ abort ระหว่าง render แต่มันจบพอดี)
-    if (signal?.aborted) throw new Error('ABORTED');
+    await Promise.race([execPromise, abortRacePromise]);
+    checkAborted();
 
     // 7. Read result
     onProgress?.(97);
@@ -243,11 +264,11 @@ export async function renderVideoWithSubtitles(
       throw new Error('ไม่สามารถอ่านผลลัพธ์จาก FFmpeg ได้');
     }
 
-    // 8. Cleanup virtual FS (กัน memory leak)
+    // 8. Cleanup virtual FS
     await Promise.allSettled([
-      ff.deleteFile(inName),
-      ff.deleteFile(outName),
-      ff.deleteFile(assName),
+      ff.deleteFile(inName).catch(() => {}),
+      ff.deleteFile(outName).catch(() => {}),
+      ff.deleteFile(assName).catch(() => {}),
     ]);
 
     if (dataBuffer.byteLength === 0) throw new Error('FFmpeg สร้างไฟล์ว่างเปล่า');
@@ -257,24 +278,16 @@ export async function renderVideoWithSubtitles(
     onProgress?.(100);
     return blob;
   } catch (err: any) {
-    // ถ้าถูก abort → cleanup แบบเบา
-    if (err?.message === 'ABORTED' || signal?.aborted) {
-      await Promise.allSettled([
-        ff.deleteFile(inName).catch(() => {}),
-        ff.deleteFile(outName).catch(() => {}),
-        ff.deleteFile(assName).catch(() => {}),
-      ]);
+    const msg = err?.message || '';
+    if (msg === 'ABORTED' || signal?.aborted) {
+      // cleanup เบาๆ
       onProgress?.(0);
       throw new Error('ABORTED');
     }
-    // Cleanup เมื่อ error ปกติ
-    await Promise.allSettled([
-      ff.deleteFile(inName).catch(() => {}),
-      ff.deleteFile(outName).catch(() => {}),
-      ff.deleteFile(assName).catch(() => {}),
-    ]);
     onProgress?.(0);
     throw err;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 

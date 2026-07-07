@@ -214,8 +214,13 @@ export async function renderVideoWithSubtitles(
   //    libass ใน WASM ไม่มี fontconfig auto-scan — ต้องระบุ fontsdir เอง
   console.log('[ffmpeg] Creating fonts dir & downloading font...');
   
-  // Emscripten รองรับ mkdir ผ่าน ff.createDir หรือเขียน path ก่อน writeFile
-  // writeFile จะสร้าง intermediate dirs ให้เองถ้าใช้วิธีนี้
+  // Emscripten virtual FS: writeFile ไม่สร้าง intermediate dirs ให้
+  // ต้อง createDir ก่อน แล้วค่อย writeFile
+  try {
+    await ff.createDir(FONT_VFS_DIR);
+  } catch {
+    // ignore if dir already exists
+  }
   await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL));
   console.log('[ffmpeg] Font written to', FONT_VFS_PATH);
   

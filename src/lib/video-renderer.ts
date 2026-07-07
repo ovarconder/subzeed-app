@@ -11,6 +11,20 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import type { SubtitleEntry, TextSegment } from './types';
 
+// ─── Font Constants ────────────────────────────────────
+// ฟอนต์ที่ใช้ใน WASM virtual FS — ต้องสอดคล้องกันทั้ง 4 จุด:
+//   1. CDN URL ที่ fetch มา
+//   2. path ใน virtual FS ที่ writeFile ไป
+//   3. fontsdir path ที่ระบุใน -vf filter
+//   4. Fontname ใน [V4+ Styles] ของไฟล์ .ass
+// ชื่อ font family จริงของไฟล์ (ตรวจสอบจาก name table ใน .ttf):
+//   NotoSansThai-Regular.ttf → "Noto Sans Thai"
+
+const FONT_URL = 'https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansThai/NotoSansThai-Regular.ttf';
+const FONT_VFS_DIR = '/fonts';
+const FONT_VFS_PATH = `${FONT_VFS_DIR}/NotoSansThai-Regular.ttf`;
+const FONT_FAMILY_NAME = 'Noto Sans Thai';  // ต้องตรงกับ nameID=1 ใน .ttf
+
 // ─── Types ──────────────────────────────────────────────
 
 export type ExportFormat = 'mp4' | 'webm' | 'mov' | 'gif';
@@ -38,7 +52,7 @@ export interface RenderOptions {
 }
 
 const DEFAULT_RENDER_OPTIONS: RenderOptions = {
-  fontFamily: 'Arial',
+  fontFamily: FONT_FAMILY_NAME,
   fontSize: 36,
   fontColor: 'white',
   strokeColor: 'black',
@@ -108,9 +122,13 @@ async function getFFmpeg(): Promise<FFmpeg> {
   ffmpegLoadPromise = (async () => {
     const instance = new FFmpeg();
 
-    // ตั้ง logger ที่ debug level (เห็นทุกข้อความ)
+    // ตั้ง logger — debug level + font-specific filter
     instance.on('log', ({ type, message }) => {
       console.log('[ffmpeg:log]', type === 'error' ? '❌' : 'ℹ️', message);
+      // กรองเฉพาะบรรทัดที่เกี่ยวกับฟอนต์ เพื่อ verify ว่าจับคู่ฟอนต์ติด
+      if (message.includes('fontselect') || message.includes('Loading font file') || message.includes('fonts')) {
+        console.log('[ffmpeg:font]', message);
+      }
     });
 
     try {
@@ -192,10 +210,19 @@ export async function renderVideoWithSubtitles(
   if (videoData.size === 0) throw new Error('ไฟล์วิดีโอว่างเปล่า');
   onProgress?.(8);
 
-  // 3. Build ASS subtitle
+  // 3. สร้าง fonts directory + ดาวน์โหลดฟอนต์ลง virtual FS
+  //    libass ใน WASM ไม่มี fontconfig auto-scan — ต้องระบุ fontsdir เอง
+  console.log('[ffmpeg] Creating fonts dir & downloading font...');
+  
+  // Emscripten รองรับ mkdir ผ่าน ff.createDir หรือเขียน path ก่อน writeFile
+  // writeFile จะสร้าง intermediate dirs ให้เองถ้าใช้วิธีนี้
+  await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL));
+  console.log('[ffmpeg] Font written to', FONT_VFS_PATH);
+  
+  // 4. Build ASS subtitle (ใช้ FONT_FAMILY_NAME เป็น Fontname)
   const ass = buildAss(subtitles, opts);
 
-  // 4. เขียนไฟล์เข้าระบบ virtual FS
+  // 5. เขียนไฟล์วิดีโอ + subtitle เข้าระบบ virtual FS
   const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
   const assName = 'subs.ass';
   const outName = `output.${ext}`;
@@ -270,7 +297,9 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
 
   args.push(
     '-i', inName,
-    '-vf', 'subtitles=subs.ass',
+    // ass filter (= subtitles) + fontsdir — libass ใน WASM ไม่ auto-scan
+    // ต้องระบุ path ฟอนต์โดยตรง ไม่งั้นจะใช้ฟอนต์ fallback ที่ไม่มี glyph ไทย
+    '-vf', `ass=subs.ass:fontsdir=${FONT_VFS_DIR}`,
     ...codecArgs(opts.format, opts.quality, opts.useHardwareAccel),
     // คัดลอก audio stream ตรงๆ (ไม่ re-encode)
     '-c:a', 'copy',
@@ -295,7 +324,7 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
     if (opts.trimStart !== undefined && opts.trimStart > 0) paletteArgs.push('-ss', String(opts.trimStart));
     if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) paletteArgs.push('-to', String(opts.trimEnd));
     paletteArgs.push('-i', inName);
-    paletteArgs.push('-vf', `${trimFilter}${scale},subtitles=subs.ass,palettegen=stats_mode=diff`);
+    paletteArgs.push('-vf', `${trimFilter}${scale},ass=subs.ass:fontsdir=${FONT_VFS_DIR},palettegen=stats_mode=diff`);
     paletteArgs.push('-y', paletteName);
     await ff.exec(paletteArgs);
 
@@ -305,7 +334,7 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
     if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) gifArgs.push('-to', String(opts.trimEnd));
     gifArgs.push('-i', inName);
     gifArgs.push('-i', paletteName);
-    gifArgs.push('-lavfi', `${trimFilter}${scale},subtitles=subs.ass [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5`);
+    gifArgs.push('-lavfi', `${trimFilter}${scale},ass=subs.ass:fontsdir=${FONT_VFS_DIR} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5`);
     gifArgs.push('-r', String(fps));
     gifArgs.push('-y', outName);
     await ff.exec(gifArgs);
@@ -385,7 +414,8 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
   );
   l.push(
-    `Style: Default,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`,
+    // Fontname ต้องตรงกับ nameID=1 ของไฟล์ .ttf ที่ใช้ (Noto Sans Thai)
+    `Style: Default,${FONT_FAMILY_NAME},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`,
   );
   l.push('');
 

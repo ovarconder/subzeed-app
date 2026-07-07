@@ -12,18 +12,15 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import type { SubtitleEntry, TextSegment } from './types';
 
 // ─── Font Constants ────────────────────────────────────
-// ฟอนต์ที่ใช้ใน WASM virtual FS — ต้องสอดคล้องกันทั้ง 4 จุด:
-//   1. CDN URL ที่ fetch มา
-//   2. path ใน virtual FS ที่ writeFile ไป
-//   3. fontsdir path ที่ระบุใน -vf filter
-//   4. Fontname ใน [V4+ Styles] ของไฟล์ .ass
-// ชื่อ font family จริงของไฟล์ (ตรวจสอบจาก name table ใน .ttf):
-//   NotoSansThai-Regular.ttf → "Noto Sans Thai"
+// ฟอนต์สำหรับ WASM virtual FS — เพื่อให้ libass มี glyph ภาษาไทย
+// ใช้ Noto Sans Thai (เปิด public, โหลดจาก jsDelivr)
+// Path ใน VFS ต้องตรงกับ fontsdir ที่ส่งให้ ass filter
+// ถ้า fontFamily ที่ user เลือกตรงกับ FONT_FAMILY_NAME → use fontsdir
 
 const FONT_URL = 'https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansThai/NotoSansThai-Regular.ttf';
 const FONT_VFS_DIR = '/fonts';
 const FONT_VFS_PATH = `${FONT_VFS_DIR}/NotoSansThai-Regular.ttf`;
-const FONT_FAMILY_NAME = 'Noto Sans Thai';  // ต้องตรงกับ nameID=1 ใน .ttf
+const FONT_FAMILY_NAME = 'Noto Sans Thai';
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -83,32 +80,21 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = {
 };
 
 // ─── CDN Base URL (ปักหมุดเวอร์ชันให้ตรงกับ package.json) ──
-// @ffmpeg/core@0.12.10 ต้องตรงกับ @ffmpeg/ffmpeg@0.12.10 ที่ใช้
+// @ffmpeg/core@0.12.10 ต้องตรงกับ @ffmpeg/ffmpeg ที่ใช้
 
 const CDN_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
-const FFMPEG_CDN_BASE = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+const FFMPEG_CDN_BASE = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm';
 
 // ─── FFmpeg Singleton ──────────────────────────────────
 // โหลดครั้งเดียว เก็บไว้ reuse กัน race condition
-// timeout 30 วิ — ไม่ให้ค้าง indefinitely
 
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
 let ffmpegLoadError: string | null = null;
-let ffmpegLoadAborted = false;
-
-const FFMPEG_LOAD_TIMEOUT_MS = 45_000; // 45 วิ
 
 async function getFFmpeg(): Promise<FFmpeg> {
   // ถ้าโหลดสำเร็จแล้ว → return ทันที
   if (ffmpeg) return ffmpeg;
-
-  // ถ้าถูกยกเลิก (timeout) → ให้ลองใหม่
-  if (ffmpegLoadAborted) {
-    ffmpegLoadAborted = false;
-    ffmpegLoadError = null;
-    ffmpegLoadPromise = null;
-  }
 
   // ถ้าโหลดไม่สำเร็จก่อนหน้า → throw ทันที
   if (ffmpegLoadError) {
@@ -122,58 +108,35 @@ async function getFFmpeg(): Promise<FFmpeg> {
   ffmpegLoadPromise = (async () => {
     const instance = new FFmpeg();
 
-    // ตั้ง logger — debug level + font-specific filter
+    // ตั้ง logger
     instance.on('log', ({ type, message }) => {
-      console.log('[ffmpeg:log]', type === 'error' ? '❌' : 'ℹ️', message);
-      // กรองเฉพาะบรรทัดที่เกี่ยวกับฟอนต์ เพื่อ verify ว่าจับคู่ฟอนต์ติด
-      if (message.includes('fontselect') || message.includes('Loading font file') || message.includes('fonts')) {
-        console.log('[ffmpeg:font]', message);
-      }
+      if (type === 'error') console.error('[ffmpeg]', message);
     });
 
     try {
-      // 1. เตรียม Blob URLs
+      // แปลง 3 asset เป็น Blob URL ที่ runtime
       console.log('[ffmpeg] Fetching core.js...');
       const coreBlobURL = await toBlobURL(`${CDN_BASE}/ffmpeg-core.js`, 'text/javascript');
 
       console.log('[ffmpeg] Fetching core.wasm...');
       const wasmBlobURL = await toBlobURL(`${CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm');
 
-      // 2. ไม่ใช้ classWorkerURL — @ffmpeg/ffmpeg จะใช้ single-thread mode
-      //    ซึ่งไม่ต้องพึ่ง SharedArrayBuffer / COOP+COEP headers
-      //    เหมาะกับ production ที่ server ยังไม่ได้ตั้ง Cross-Origin Isolation
-      //    core.js + wasm ใช้ Blob URL (toBlobURL) เพื่อเลี่ยง CORS
-      console.log('[ffmpeg] Using single-thread mode (no classWorkerURL)...');
+      console.log('[ffmpeg] Fetching worker.js (of @ffmpeg/ffmpeg)...');
+      const workerBlobURL = await toBlobURL(`${FFMPEG_CDN_BASE}/worker.js`, 'text/javascript');
 
-      // 3. โหลด FFmpeg.wasm พร้อม timeout
-      console.log('[ffmpeg] Calling ffmpeg.load() with', {
-        coreURL: 'blob:...',
-        wasmURL: 'blob:...',
-        classWorkerURL: 'none (single-thread)',
-      });
-      
-      const loadPromise = instance.load({
+      console.log('[ffmpeg] Calling ffmpeg.load() with Blob URLs...');
+      await instance.load({
         coreURL: coreBlobURL,
         wasmURL: wasmBlobURL,
-        // ไม่ส่ง classWorkerURL → fallback เป็น single-thread
+        classWorkerURL: workerBlobURL,
       });
-
-      // Race condition: load vs timeout
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`FFmpeg.load() ไม่เสร็จภายใน ${FFMPEG_LOAD_TIMEOUT_MS/1000} วินาที`)), FFMPEG_LOAD_TIMEOUT_MS);
-      });
-
-      await Promise.race([loadPromise, timeoutPromise]);
 
       ffmpeg = instance;
-      console.log('[ffmpeg] ✅ FFmpeg ready');
+      console.log('[ffmpeg] FFmpeg ready');
       return instance;
     } catch (err) {
       ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';
-      ffmpegLoadAborted = true;
-      console.error('[ffmpeg] ❌ Load failed:', ffmpegLoadError);
-      // cleanup
-      try { instance.terminate?.(); } catch {}
+      console.error('[ffmpeg] Load failed:', ffmpegLoadError);
       throw new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${ffmpegLoadError}`);
     }
   })();
@@ -210,24 +173,18 @@ export async function renderVideoWithSubtitles(
   if (videoData.size === 0) throw new Error('ไฟล์วิดีโอว่างเปล่า');
   onProgress?.(8);
 
-  // 3. สร้าง fonts directory + ดาวน์โหลดฟอนต์ลง virtual FS
-  //    libass ใน WASM ไม่มี fontconfig auto-scan — ต้องระบุ fontsdir เอง
-  console.log('[ffmpeg] Creating fonts dir & downloading font...');
-  
-  // Emscripten virtual FS: writeFile ไม่สร้าง intermediate dirs ให้
-  // ต้อง createDir ก่อน แล้วค่อย writeFile
-  try {
-    await ff.createDir(FONT_VFS_DIR);
-  } catch {
-    // ignore if dir already exists
+  // 3. (Optional) ดาวน์โหลดฟอนต์ไทยถ้าฟอนต์ที่ใช้เป็น Noto Sans Thai
+  const needsThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
+    subtitles.some(s => s.segments?.some(seg => seg.style.fontFamily === FONT_FAMILY_NAME));
+  if (needsThaiFont) {
+    try { await ff.createDir(FONT_VFS_DIR); } catch { /* ignore */ }
+    try { await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL)); } catch {}
   }
-  await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL));
-  console.log('[ffmpeg] Font written to', FONT_VFS_PATH);
-  
-  // 4. Build ASS subtitle (ใช้ FONT_FAMILY_NAME เป็น Fontname)
+
+  // 4. Build ASS subtitle
   const ass = buildAss(subtitles, opts);
 
-  // 5. เขียนไฟล์วิดีโอ + subtitle เข้าระบบ virtual FS
+  // 5. เขียนไฟล์เข้าระบบ virtual FS
   const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
   const assName = 'subs.ass';
   const outName = `output.${ext}`;
@@ -300,11 +257,16 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
     args.push('-to', String(opts.trimEnd));
   }
 
+  args.push('-i', inName);
+
+  // ใช้ ass filter (= subtitles) ถ้ามีฟอนต์ไทยให้ระบุ fontsdir
+  if (opts.fontFamily === FONT_FAMILY_NAME) {
+    args.push('-vf', `ass=subs.ass:fontsdir=${FONT_VFS_DIR}`);
+  } else {
+    args.push('-vf', 'subtitles=subs.ass');
+  }
+
   args.push(
-    '-i', inName,
-    // ass filter (= subtitles) + fontsdir — libass ใน WASM ไม่ auto-scan
-    // ต้องระบุ path ฟอนต์โดยตรง ไม่งั้นจะใช้ฟอนต์ fallback ที่ไม่มี glyph ไทย
-    '-vf', `ass=subs.ass:fontsdir=${FONT_VFS_DIR}`,
     ...codecArgs(opts.format, opts.quality, opts.useHardwareAccel),
     // คัดลอก audio stream ตรงๆ (ไม่ re-encode)
     '-c:a', 'copy',
@@ -322,6 +284,9 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
   const trimFilter = (opts.trimStart !== undefined || opts.trimEnd !== undefined)
     ? `trim=${opts.trimStart ?? 0}:${opts.trimEnd ?? 9999},setpts=PTS-STARTPTS,`
     : '';
+  const subF = opts.fontFamily === FONT_FAMILY_NAME
+    ? `ass=subs.ass:fontsdir=${FONT_VFS_DIR}`
+    : 'subtitles=subs.ass';
 
   try {
     // Step 1: Generate palette
@@ -329,7 +294,7 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
     if (opts.trimStart !== undefined && opts.trimStart > 0) paletteArgs.push('-ss', String(opts.trimStart));
     if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) paletteArgs.push('-to', String(opts.trimEnd));
     paletteArgs.push('-i', inName);
-    paletteArgs.push('-vf', `${trimFilter}${scale},ass=subs.ass:fontsdir=${FONT_VFS_DIR},palettegen=stats_mode=diff`);
+    paletteArgs.push('-vf', `${trimFilter}${scale},${subF},palettegen=stats_mode=diff`);
     paletteArgs.push('-y', paletteName);
     await ff.exec(paletteArgs);
 
@@ -339,7 +304,7 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
     if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) gifArgs.push('-to', String(opts.trimEnd));
     gifArgs.push('-i', inName);
     gifArgs.push('-i', paletteName);
-    gifArgs.push('-lavfi', `${trimFilter}${scale},ass=subs.ass:fontsdir=${FONT_VFS_DIR} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5`);
+    gifArgs.push('-lavfi', `${trimFilter}${scale},${subF} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5`);
     gifArgs.push('-r', String(fps));
     gifArgs.push('-y', outName);
     await ff.exec(gifArgs);
@@ -401,6 +366,7 @@ function mimeOf(format: ExportFormat): string {
 
 // ─── ASS Builder ───────────────────────────────────────
 // รองรับ segment-based rendering (หลายสี/สไตล์ในบรรทัดเดียว)
+// ✅ ใช้ per-subtitle y_offset, position, fontFamily, fontSize
 
 function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
   const l: string[] = [];
@@ -418,9 +384,14 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
   l.push(
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
   );
+  // สร้าง 3 styles สำหรับ bottom/top/middle
   l.push(
-    // Fontname ต้องตรงกับ nameID=1 ของไฟล์ .ttf ที่ใช้ (Noto Sans Thai)
-    `Style: Default,${FONT_FAMILY_NAME},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`,
+    // bottom (alignment 2 = bottom center)
+    `Style: bottom,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`,
+    // top (alignment 8 = top center)
+    `Style: top,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,10,1`,
+    // middle (alignment 5 = middle center)
+    `Style: middle,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,5,10,10,10,1`,
   );
   l.push('');
 
@@ -429,11 +400,23 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
 
   subs.forEach((s) => {
     if (s.segments && s.segments.length > 0) {
-      const assText = s.segments.map((seg) => segmentToAss(seg)).join('');
-      l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${assText}`);
+      const assText = s.segments.map((seg) => segmentToAss(seg, opts.fontFamily, opts.fontSize)).join('');
+
+      // ✅ ใช้ position และ y_offset ของ subtitle ตัวนั้น
+      const pos = s.position || 'bottom';
+      const yPct = s.y_offset ?? opts.y_offset;
+
+      // แปลง y_offset % → MarginV (ASS ใช้ pixel)
+      // PlayResY = 360 → y_offset% * 360 / 100
+      const marginV = Math.round((yPct / 100) * 360);
+
+      l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},${pos},,0,0,${marginV},,${assText}`);
     } else {
+      const pos = s.position || 'bottom';
+      const yPct = s.y_offset ?? opts.y_offset;
+      const marginV = Math.round((yPct / 100) * 360);
       l.push(
-        `Dialogue: 0,${fmt(s.start)},${fmt(s.end)},Default,,0,0,0,,${s.text.replace(/\n/g, '\\N')}`,
+        `Dialogue: 0,${fmt(s.start)},${fmt(s.end)},${pos},,0,0,${marginV},,${s.text.replace(/\n/g, '\\N')}`,
       );
     }
   });
@@ -443,10 +426,23 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
 
 /**
  * แปลง TextSegment → ASS override codes
+ * ✅ รองรับ per-segment fontFamily, fontSize
  */
-function segmentToAss(seg: TextSegment): string {
+function segmentToAss(seg: TextSegment, fallbackFontFamily: string, fallbackFontSize: number): string {
   const st = seg.style;
   const tags: string[] = [];
+
+  // ✅ Font Family (per-segment)
+  const segFont = st.fontFamily || fallbackFontFamily;
+  if (segFont !== fallbackFontFamily) {
+    tags.push(`\\fn${segFont}`);
+  }
+
+  // ✅ Font Size (per-segment)
+  const segSize = st.fontSize || fallbackFontSize;
+  if (segSize !== fallbackFontSize) {
+    tags.push(`\\fs${segSize}`);
+  }
 
   // Color (PrimaryColour) — ASS uses &HBBGGRR& (BGR little-endian)
   const hexColor = hexToAssColor(st.color);
@@ -463,7 +459,8 @@ function segmentToAss(seg: TextSegment): string {
   tags.push(`\\i${isItalic ? '1' : '0'}`);
 
   // Stroke (Outline)
-  if (st.strokeWidth > 0 && st.strokeOpacity > 0) {
+  const isStrokeActive = st.strokeActive !== undefined ? st.strokeActive : true;
+  if (isStrokeActive && st.strokeWidth > 0 && st.strokeOpacity > 0) {
     const outlineColor = hexToAssColor(st.strokeColor);
     tags.push(`\\bord${st.strokeWidth}`);
     tags.push(`\\3c${outlineColor}`);
@@ -474,7 +471,8 @@ function segmentToAss(seg: TextSegment): string {
   }
 
   // Shadow
-  if (st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
+  const isShadowActive = st.shadowActive !== undefined ? st.shadowActive : true;
+  if (isShadowActive && st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
     const shadowDist = Math.max(1, Math.abs(st.shadowOffsetY));
     tags.push(`\\shad${shadowDist}`);
     const shadowColor = hexToAssColor(st.shadowColor);
@@ -520,11 +518,35 @@ function fmt(sec: number): string {
 
 // ─── Helpers ───────────────────────────────────────────
 
+/**
+ * ดาวน์โหลดวิดีโอ พร้อมจัดการชื่อซ้ำ (ถ้ามีไฟล์ชื่อเดียวกัน → ต่อท้าย (1), (2), ...)
+ * โดยลองเช็คผ่าน localStorage ว่าเคย download ชื่อนี้ไปแล้วกี่ครั้ง (ใน session นี้)
+ */
 export function downloadVideoBlob(blob: Blob, filename: string = 'subzeed-video.mp4') {
+  // ตรวจสอบชื่อซ้ำ — ใช้ session counter แบบง่าย
+  const downloadCountKey = `download_count_${filename}`;
+  let count = 0;
+  try {
+    count = parseInt(localStorage.getItem(downloadCountKey) || '0', 10);
+  } catch { /* localStorage อาจ blocked */ }
+
+  let finalName = filename;
+  if (count > 0) {
+    // แทรก (n) ก่อน extension
+    const dotIdx = filename.lastIndexOf('.');
+    if (dotIdx > 0) {
+      finalName = `${filename.substring(0, dotIdx)} (${count})${filename.substring(dotIdx)}`;
+    } else {
+      finalName = `${filename} (${count})`;
+    }
+  }
+  // increment counter
+  try { localStorage.setItem(downloadCountKey, String(count + 1)); } catch {}
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = finalName;
   a.click();
   // Revoke หลัง download (allow browser time to start download)
   setTimeout(() => URL.revokeObjectURL(url), 10_000);

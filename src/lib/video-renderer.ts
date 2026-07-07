@@ -151,13 +151,18 @@ export async function renderVideoWithSubtitles(
   subtitles: SubtitleEntry[],
   options?: Partial<RenderOptions>,
   onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   const opts = { ...DEFAULT_RENDER_OPTIONS, ...options };
   const ext = extOf(opts.format);
 
+  // เช็ค abort ก่อนเริ่ม
+  if (signal?.aborted) throw new Error('ABORTED');
+
   // 1. Load FFmpeg
   onProgress?.(2);
   const ff = await getFFmpeg();
+  if (signal?.aborted) { throw new Error('ABORTED'); }
 
   onProgress?.(5);
 
@@ -171,6 +176,7 @@ export async function renderVideoWithSubtitles(
     videoData = videoBlobOrUrl;
   }
   if (videoData.size === 0) throw new Error('ไฟล์วิดีโอว่างเปล่า');
+  if (signal?.aborted) { throw new Error('ABORTED'); }
   onProgress?.(8);
 
   // 3. (Optional) ดาวน์โหลดฟอนต์ไทยถ้าฟอนต์ที่ใช้เป็น Noto Sans Thai
@@ -180,6 +186,7 @@ export async function renderVideoWithSubtitles(
     try { await ff.createDir(FONT_VFS_DIR); } catch { /* ignore */ }
     try { await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL)); } catch {}
   }
+  if (signal?.aborted) { throw new Error('ABORTED'); }
 
   // 4. Build ASS subtitle
   const ass = buildAss(subtitles, opts);
@@ -191,21 +198,38 @@ export async function renderVideoWithSubtitles(
 
   await ff.writeFile(inName, await fetchFile(videoData));
   await ff.writeFile(assName, new TextEncoder().encode(ass));
+  if (signal?.aborted) { throw new Error('ABORTED'); }
   onProgress?.(12);
 
-  // 5. Progress callback
+  // Progress callback
   ff.on('progress', ({ progress: pct }) => {
     const mapped = Math.min(12 + Math.round(pct * 83), 95);
     onProgress?.(mapped);
   });
 
+  // ตั้ง AbortListener → terminate FFmpeg process (kill การทำงาน)
+  const abortPromise = new Promise<never>((_, reject) => {
+    if (signal?.aborted) return reject(new Error('ABORTED'));
+    signal?.addEventListener('abort', () => {
+      try { ff.terminate(); } catch {}
+      // รีเซ็ต singleton เพื่อให้ครั้งหน้าสามารถโหลด FFmpeg ใหม่ได้
+      ffmpeg = null;
+      ffmpegLoadPromise = null;
+      ffmpegLoadError = null;
+      reject(new Error('ABORTED'));
+    }, { once: true });
+  });
+
   try {
-    // 6. Build arguments
-    if (opts.format === 'gif') {
-      await renderGif(ff, inName, outName, opts);
-    } else {
-      await renderVideo(ff, inName, outName, opts);
-    }
+    // 6. Build arguments — race ff.exec() กับ abortPromise
+    const execPromise = opts.format === 'gif'
+      ? renderGif(ff, inName, outName, opts)
+      : renderVideo(ff, inName, outName, opts);
+
+    await Promise.race([execPromise, abortPromise]);
+
+    // เช็ค abort หลัง render เสร็จ (เผื่อ abort ระหว่าง render แต่มันจบพอดี)
+    if (signal?.aborted) throw new Error('ABORTED');
 
     // 7. Read result
     onProgress?.(97);
@@ -232,12 +256,22 @@ export async function renderVideoWithSubtitles(
     const blob = new Blob([dataBuffer], { type: mimeOf(opts.format) });
     onProgress?.(100);
     return blob;
-  } catch (err) {
-    // Cleanup เมื่อ error
+  } catch (err: any) {
+    // ถ้าถูก abort → cleanup แบบเบา
+    if (err?.message === 'ABORTED' || signal?.aborted) {
+      await Promise.allSettled([
+        ff.deleteFile(inName).catch(() => {}),
+        ff.deleteFile(outName).catch(() => {}),
+        ff.deleteFile(assName).catch(() => {}),
+      ]);
+      onProgress?.(0);
+      throw new Error('ABORTED');
+    }
+    // Cleanup เมื่อ error ปกติ
     await Promise.allSettled([
-      ff.deleteFile(inName),
-      ff.deleteFile(outName),
-      ff.deleteFile(assName),
+      ff.deleteFile(inName).catch(() => {}),
+      ff.deleteFile(outName).catch(() => {}),
+      ff.deleteFile(assName).catch(() => {}),
     ]);
     onProgress?.(0);
     throw err;

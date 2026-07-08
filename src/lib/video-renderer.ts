@@ -6,6 +6,13 @@
 // core + wasm + worker ของ @ffmpeg/ffmpeg เอง (classWorkerURL)
 // เพื่อเลี่ยง Web Worker path resolution issue ใน Next.js + basePath
 // ============================================================
+//
+// 🔒 STABLE CORE — แก้ไขด้วยความระมัดระวัง
+// ส่วน getFFmpeg() / awaitCancelable() / execWithAbort() คือ core ที่ทำให้
+// progress bar ไม่ค้าง และปุ่มยกเลิกทำงานได้จริง ถ้าจะแก้ตรงนี้ ให้ทดสอบ
+// 3 เคสก่อน merge เสมอ: (1) โหลดสำเร็จปกติ (2) ตัดเน็ตระหว่างโหลด → ต้องเด้ง error ภายใน 30s
+// ไม่ใช่ค้างตลอดไป (3) กดยกเลิกระหว่าง render → ต้องเด้ง toast "ยกเลิกการเรนเดอร์แล้ว" ทันที
+// ============================================================
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
@@ -61,12 +68,62 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = { best: 25, high: 30, medium:
 const CORE_CDN = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
 const FFMPEG_CDN = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
 
+// ─── Timeouts ───────────────────────────────────────────
+const FFMPEG_LOAD_TIMEOUT_MS = 30_000; // โหลด core+wasm จาก CDN เกิน 30s ถือว่าค้าง
+const VIDEO_FETCH_TIMEOUT_MS = 60_000; // ดึงไฟล์วิดีโอต้นทางเกิน 60s ถือว่าค้าง
+
+// ─── awaitCancelable — ทำให้ promise ใดๆ ยกเลิกได้จริงและมี timeout ⭐ ─
+// จุดสำคัญ: promise เดิม (เช่น ffmpeg.load()) อาจยังทำงานต่อเบื้องหลังได้
+// แต่ตัวนี้จะ "หยุดรอ" ทันทีเมื่อ abort/timeout โดยไม่ต้องพึ่ง promise เดิม
+function awaitCancelable<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal,
+  timeoutMs?: number,
+  timeoutLabel?: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      signal?.removeEventListener('abort', onAbort);
+      if (timer) clearTimeout(timer);
+    };
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('ABORTED'));
+    };
+
+    if (signal) {
+      if (signal.aborted) { onAbort(); return; }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+    if (timeoutMs) {
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error(timeoutLabel || `หมดเวลา (${Math.round(timeoutMs / 1000)}s)`));
+      }, timeoutMs);
+    }
+
+    promise.then(
+      (v) => { if (settled) return; settled = true; cleanup(); resolve(v); },
+      (e) => { if (settled) return; settled = true; cleanup(); reject(e); },
+    );
+  });
+}
+
 // ─── FFmpeg Singleton ──────────────────────────────────
 let ffmpeg: FFmpeg | null = null;
 let ffmpegLoadPromise: Promise<FFmpeg> | null = null;
 let ffmpegLoadError: string | null = null;
+let loadGeneration = 0; // ⭐ กัน stale load มา assign ทับหลังยกเลิกไปแล้ว
 
 export function terminateFFmpeg() {
+  loadGeneration++; // ทำให้ load รอบเก่า (ถ้ายังทำงานอยู่เบื้องหลัง) รู้ตัวว่าโดนยกเลิก
   if (ffmpeg) { try { ffmpeg.terminate(); } catch {} ffmpeg = null; }
   ffmpegLoadPromise = null;
   ffmpegLoadError = null;
@@ -77,6 +134,7 @@ async function getFFmpeg(): Promise<FFmpeg> {
   if (ffmpegLoadError) throw new Error(`FFmpeg โหลดไม่สำเร็จ (ก่อนหน้า): ${ffmpegLoadError}`);
   if (ffmpegLoadPromise) return ffmpegLoadPromise;
 
+  const myGeneration = loadGeneration;
   ffmpegLoadPromise = (async () => {
     const instance = new FFmpeg();
     instance.on('log', ({ type, message }) => {
@@ -93,13 +151,25 @@ async function getFFmpeg(): Promise<FFmpeg> {
         wasmURL: `${CORE_CDN}/ffmpeg-core.wasm`,
         classWorkerURL: workerBlobURL,
       });
+
+      // ถ้าระหว่างโหลด มีการยกเลิก/reset (terminateFFmpeg ถูกเรียก) ไปแล้ว
+      // ห้าม assign instance นี้เป็นตัวหลัก — ปิดทิ้งเงียบๆ แทน
+      if (myGeneration !== loadGeneration) {
+        console.log('[ffmpeg] Load finished after cancel — discarding stale instance');
+        try { instance.terminate(); } catch {}
+        throw new Error('ABORTED');
+      }
+
       ffmpeg = instance;
       console.log('[ffmpeg] FFmpeg ready');
       return instance;
     } catch (err) {
-      ffmpegLoadError = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[ffmpeg] Load failed:', ffmpegLoadError);
-      throw new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${ffmpegLoadError}`);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      if (myGeneration === loadGeneration && message !== 'ABORTED') {
+        ffmpegLoadError = message;
+        console.error('[ffmpeg] Load failed:', ffmpegLoadError);
+      }
+      throw message === 'ABORTED' ? err : new Error(`ไม่สามารถโหลด FFmpeg.wasm: ${message}`);
     }
   })();
   return ffmpegLoadPromise;
@@ -147,13 +217,28 @@ export async function renderVideoWithSubtitles(
 
   try {
     onProgress?.(2);
-    const ff = await getFFmpeg();
+    console.log('[render] Step 1/7: getFFmpeg (โหลด core+wasm)...');
+    // ⭐ จุดที่เคยค้าง: เดิม await getFFmpeg() เฉยๆ ไม่มี timeout/abort
+    // ตอนนี้ผูกกับ signal + timeout 30s แล้ว ถ้าโหลดค้างจริงจะ throw ออกมาแทนที่จะแขวนตลอดไป
+    const ff = await awaitCancelable(
+      getFFmpeg(),
+      signal,
+      FFMPEG_LOAD_TIMEOUT_MS,
+      'โหลด FFmpeg.wasm ไม่สำเร็จภายใน 30 วินาที — เช็คอินเทอร์เน็ต หรือ AdBlock/Firewall ที่อาจบล็อก unpkg.com',
+    );
     checkAborted();
+    console.log('[render] Step 1/7 done');
     onProgress?.(5);
 
     let videoData: Blob;
     if (typeof videoBlobOrUrl === 'string') {
-      const resp = await fetch(videoBlobOrUrl);
+      console.log('[render] Step 2/7: fetching source video...');
+      const resp = await awaitCancelable(
+        fetch(videoBlobOrUrl, { signal }),
+        signal,
+        VIDEO_FETCH_TIMEOUT_MS,
+        'โหลดไฟล์วิดีโอต้นทางไม่สำเร็จภายใน 60 วินาที',
+      );
       if (!resp.ok) throw new Error(`โหลดวิดีโอไม่สำเร็จ (HTTP ${resp.status})`);
       videoData = await resp.blob();
     } else {
@@ -161,6 +246,7 @@ export async function renderVideoWithSubtitles(
     }
     if (videoData.size === 0) throw new Error('ไฟล์วิดีโอว่างเปล่า');
     checkAborted();
+    console.log('[render] Step 2/7 done, size:', videoData.size);
     onProgress?.(8);
 
     const needsThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
@@ -185,12 +271,14 @@ export async function renderVideoWithSubtitles(
       onProgress?.(mapped);
     });
 
+    console.log('[render] Step 3/7: encoding...');
     if (opts.format === 'gif') {
       await renderGif(ff, inName, outName, opts, signal);
     } else {
       await renderVideo(ff, inName, outName, opts, signal);
     }
     checkAborted();
+    console.log('[render] Step 3/7 done');
 
     onProgress?.(97);
     const readResult = await ff.readFile(outName);

@@ -291,6 +291,7 @@ export async function renderVideoWithSubtitles(
     checkAborted();
 
     const ass = buildAss(subtitles, opts);
+    console.log('[render] ASS built, length:', ass.length, 'first 200 chars:', ass.slice(0, 200));
     const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
     const assName = 'subs.ass';
     const outName = `output.${ext}`;
@@ -348,7 +349,18 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
   if (opts.trimStart !== undefined && opts.trimStart > 0) args.push('-ss', String(opts.trimStart));
   if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) args.push('-to', String(opts.trimEnd));
   args.push('-i', inName);
-  args.push('-vf', opts.fontFamily === FONT_FAMILY_NAME ? `ass=subs.ass:fontsdir=${FONT_VFS_DIR}` : 'subtitles=subs.ass');
+
+  // ⭐ ใช้ subtitles filter (ต่างจาก ass filter ตรงที่รองรับ fontsdir โดยตรง)
+  // ass filter ต้องระบุ fontsdir ใน filter string
+  // แต่ถ้าไม่ระบุ → libass ไม่เจอฟอนต์ → ข้อความไม่แสดง
+  // ใช้ fontsdir:fontsdir=... เพื่อให้ libass หาฟอนต์ที่เรา writeFile ไว้
+  const hasThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
+    opts.fontFamily.includes('Noto') || opts.fontFamily.includes('Thai');
+  if (hasThaiFont) {
+    args.push('-vf', `ass=subs.ass:fontsdir=${FONT_VFS_DIR}`);
+  } else {
+    args.push('-vf', 'ass=subs.ass');
+  }
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel), '-c:a', 'copy', '-movflags', '+faststart', '-y', outName);
   await execWithAbort(ff, args, signal);
 }
@@ -359,7 +371,9 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
   const scale = `scale=${opts.gifMaxWidth}:-1:flags=lanczos`;
   const trimFilter = (opts.trimStart !== undefined || opts.trimEnd !== undefined)
     ? `trim=${opts.trimStart ?? 0}:${opts.trimEnd ?? 9999},setpts=PTS-STARTPTS,` : '';
-  const subF = opts.fontFamily === FONT_FAMILY_NAME ? `ass=subs.ass:fontsdir=${FONT_VFS_DIR}` : 'subtitles=subs.ass';
+  const hasThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
+    opts.fontFamily.includes('Noto') || opts.fontFamily.includes('Thai');
+  const subF = hasThaiFont ? `ass=subs.ass:fontsdir=${FONT_VFS_DIR}` : 'ass=subs.ass';
   try {
     const pa: string[] = [];
     if (opts.trimStart !== undefined && opts.trimStart > 0) pa.push('-ss', String(opts.trimStart));
@@ -409,9 +423,10 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
   l.push('[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 640', 'PlayResY: 360', 'ScaledBorderAndShadow: yes', '');
   l.push('[V4+ Styles]');
   l.push('Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding');
-  l.push(`Style: bottom,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`);
-  l.push(`Style: top,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,10,1`);
-  l.push(`Style: middle,${opts.fontFamily},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,5,10,10,10,1`);
+  // ⭐ ใช้ font family 'Sans' (เป็น default font ที่ libass ของ FFmpeg.wasm มี built-in)
+  l.push(`Style: bottom,Sans,${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`);
+  l.push(`Style: top,Sans,${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,10,1`);
+  l.push(`Style: middle,Sans,${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,5,10,10,10,1`);
   l.push('', '[Events]');
   l.push('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
   subs.forEach((s) => {
@@ -432,8 +447,10 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
 function segmentToAss(seg: TextSegment, fallbackFontFamily: string, fallbackFontSize: number): string {
   const st = seg.style;
   const tags: string[] = [];
-  const segFont = st.fontFamily || fallbackFontFamily;
-  if (segFont !== fallbackFontFamily) tags.push(`\\fn${segFont}`);
+  // ⭐ ใช้ 'Sans' เสมอเพื่อให้ libass match ฟอนต์ใน VFS หรือ built-in
+  // (ไม่ใช้ seg.style.fontFamily เพราะ libass ใน FFmpeg.wasm match ชื่อฟอนต์กับ
+  // metadata ของ .ttf ใน fontsdir ไม่ตรงกัน)
+  const segFont = 'Sans';
   const segSize = st.fontSize || fallbackFontSize;
   if (segSize !== fallbackFontSize) tags.push(`\\fs${segSize}`);
   tags.push(`\\c${hexToAssColor(st.color)}`);

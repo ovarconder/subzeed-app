@@ -76,6 +76,20 @@ const FFMPEG_CDN_FALLBACK = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
 const FFMPEG_LOAD_TIMEOUT_MS = 30_000; // โหลด core+wasm จาก CDN เกิน 30s ถือว่าค้าง
 const VIDEO_FETCH_TIMEOUT_MS = 60_000; // ดึงไฟล์วิดีโอต้นทางเกิน 60s ถือว่าค้าง
 
+// ─── fetchWithTimeout — fetch แบบมี timeout ⭐ ──────────
+// fetch() native ไม่มี timeout → ต้องใช้ AbortSignal.timeout() เอา
+async function fetchWithTimeout(url: string, label: string, ms: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── awaitCancelable — ทำให้ promise ใดๆ ยกเลิกได้จริงและมี timeout ⭐ ─
 // จุดสำคัญ: promise เดิม (เช่น ffmpeg.load()) อาจยังทำงานต่อเบื้องหลังได้
 // แต่ตัวนี้จะ "หยุดรอ" ทันทีเมื่อ abort/timeout โดยไม่ต้องพึ่ง promise เดิม
@@ -145,29 +159,25 @@ async function getFFmpeg(): Promise<FFmpeg> {
       if (type === 'error') console.error('[ffmpeg]', message);
     });
     try {
-      // ⭐ coreURL/wasmURL: ส่ง CDN URL ตรงๆ (ไม่ผ่าน toBlobURL)
-      // classWorkerURL เท่านั้นที่ต้องเป็น Blob URL
-      let coreURL = `${CORE_CDN}/ffmpeg-core.js`;
-      let wasmURL = `${CORE_CDN}/ffmpeg-core.wasm`;
-      let workerURL = `${FFMPEG_CDN}/worker.js`;
+      // ⭐ โหลดทั้ง 3 ไฟล์ผ่าน fetch โดยตรง (เพื่อให้ timeout ได้จริง)
+      // แล้วสร้าง Blob URL จาก response → ส่งให้ ffmpeg.load()
+      console.log('[ffmpeg] Fetching core.js + core.wasm + worker.js from CDN...');
 
-      // ลองโหลด core.js ก่อนเพื่อเช็คว่า CDN ใช้ได้
-      try {
-        const testResp = await fetch(coreURL, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
-        if (!testResp.ok) throw new Error(`HEAD ${testResp.status}`);
-      } catch {
-        console.warn('[ffmpeg] jsDelivr not reachable, falling back to unpkg');
-        coreURL = `${CORE_CDN_FALLBACK}/ffmpeg-core.js`;
-        wasmURL = `${CORE_CDN_FALLBACK}/ffmpeg-core.wasm`;
-        workerURL = `${FFMPEG_CDN_FALLBACK}/worker.js`;
-      }
+      const [coreResp, wasmResp, workerResp] = await Promise.all([
+        fetchWithTimeout(`${CORE_CDN}/ffmpeg-core.js`, 'jsDelivr core.js', 25_000),
+        fetchWithTimeout(`${CORE_CDN}/ffmpeg-core.wasm`, 'jsDelivr core.wasm', 25_000),
+        fetchWithTimeout(`${FFMPEG_CDN}/worker.js`, 'jsDelivr worker.js', 25_000),
+      ]);
 
-      console.log('[ffmpeg] Loading core.js + core.wasm...');
-      const workerBlobURL = await toBlobURL(workerURL, 'text/javascript');
-      console.log('[ffmpeg] Calling ffmpeg.load()...');
+      // ถ้า fetch สำเร็จ → สร้าง Blob URL
+      const coreBlobURL = URL.createObjectURL(await coreResp.blob());
+      const wasmBlobURL = URL.createObjectURL(await wasmResp.blob());
+      const workerBlobURL = URL.createObjectURL(await workerResp.blob());
+
+      console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load()...');
       await instance.load({
-        coreURL,
-        wasmURL,
+        coreURL: coreBlobURL,
+        wasmURL: wasmBlobURL,
         classWorkerURL: workerBlobURL,
       });
 
@@ -243,7 +253,7 @@ export async function renderVideoWithSubtitles(
       getFFmpeg(),
       signal,
       FFMPEG_LOAD_TIMEOUT_MS,
-      'โหลด FFmpeg.wasm ไม่สำเร็จภายใน 30 วินาที — เช็คอินเทอร์เน็ต หรือ AdBlock/Firewall ที่อาจบล็อก unpkg.com',
+      'โหลด FFmpeg.wasm ไม่สำเร็จภายใน 30 วินาที — เช็คอินเทอร์เน็ต หรือ AdBlock/Firewall ที่อาจบล็อก CDN',
     );
     checkAborted();
     console.log('[render] Step 1/7 done');

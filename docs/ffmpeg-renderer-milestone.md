@@ -1,0 +1,118 @@
+# 🎥 FFmpeg.wasm Renderer — Milestone: Render ผ่าน (Single-thread, Self-host)
+
+> **วันที่:** July 2026  
+> **Commit:** `8d9e951`  
+> **สถานะ:** ✅ Render วิดีโอออกมาได้ (แต่ subtitle ยังไม่ burn-in)
+
+---
+
+## สรุป
+
+หลังจาก debug มาหลายวัน ปัญหาคือ `instance.load()` ค้าง — สาเหตุคือ:
+
+1. **CDN ต่างประเทศ** — jsDelivr / unpkg ใช้ไม่ได้หรือช้าสำหรับ WASM 31MB
+2. **`classWorkerURL`** — internal worker ของ `@ffmpeg/ffmpeg` มีปัญหาใน Vercel proxy environment (fetch Blob URL อีกครั้งไม่ผ่าน)
+3. **ไฟล์ไม่ตรง basePath** — ตอนแรกไฟล์ถูก deploy ที่ root แต่ app อยู่ที่ `/subzeed/`
+
+---
+
+## สถาปัตยกรรมที่ทำงานได้
+
+### 1. Self-host WASM
+
+ไฟล์ 2 ตัวถูก deploy ไว้ที่ `public/ffmpeg/` → serve ที่ `/subzeed/ffmpeg/`:
+
+| ไฟล์ | ขนาด | Path |
+|------|------|------|
+| `ffmpeg-core.js` | ~109 KB | `/subzeed/ffmpeg/ffmpeg-core.js` |
+| `ffmpeg-core.wasm` | ~31 MB | `/subzeed/ffmpeg/ffmpeg-core.wasm` |
+
+> `worker.js` ของ `@ffmpeg/ffmpeg` ไม่จำเป็น (ไม่ใช้ `classWorkerURL`)
+
+### 2. Single-thread mode
+
+`instance.load()` รับแค่ `coreURL` + `wasmURL` — **ไม่ส่ง `classWorkerURL`**
+
+```ts
+await instance.load({
+  coreURL: coreBlobURL,   // → Blob URL of ffmpeg-core.js
+  wasmURL: wasmBlobURL,   // → Blob URL of ffmpeg-core.wasm
+  // ไม่มี classWorkerURL → single-thread mode
+});
+```
+
+ข้อดี: ไม่ต้องสร้าง Web Worker, internal fetch WASM ครั้งเดียว ไม่มี两层 proxy
+
+### 3. Fallback logic
+
+```ts
+// ลอง self-host ก่อน
+const selfHostBase = '/subzeed/ffmpeg';
+
+try {
+  // HEAD test 3s → ถ้าไม่ถึง fallback CDN
+  await fetchWithTimeout(`${selfHostBase}/ffmpeg-core.js`, ..., 3_000);
+  coreURL = `${selfHostBase}/ffmpeg-core.js`;
+  wasmURL = `${selfHostBase}/ffmpeg-core.wasm`;
+} catch {
+  // fallback → jsDelivr
+  coreURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js';
+  wasmURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.wasm';
+}
+```
+
+### 4. Timeout และ Cancel (ป้องกันค้าง)
+
+3 กลไก:
+
+| กลไก | รายละเอียด |
+|------|-----------|
+| `awaitCancelable()` | wrapper promise ที่ reject ทันทีเมื่อ signal abort หรือ timeout |
+| `loadGeneration` | กัน stale load — ถ้ายกเลิกแล้ว instance เก่าโหลดเสร็จทีหลัง จะถูก discard |
+| `execWithAbort()` | terminate FFmpeg instance เมื่อ abort ระหว่าง exec |
+
+---
+
+## ไฟล์ที่เกี่ยวข้อง
+
+| ไฟล์ | บทบาท |
+|------|--------|
+| `src/lib/video-renderer.ts` | Renderer หลัก (renderVideoWithSubtitles, getFFmpeg, awaitCancelable, execWithAbort) |
+| `src/app/studio/page.tsx` | เรียก renderer + UI progress bar + handleCancelExport |
+| `public/ffmpeg/ffmpeg-core.js` | ffmpeg-core (self-host) |
+| `public/ffmpeg/ffmpeg-core.wasm` | ffmpeg-core WASM 31MB (self-host) |
+
+---
+
+## ปัญหาที่เหลือ (ต้องแก้ต่อ)
+
+1. **Subtitle ไม่ burn-in** — video output ไม่มีซับ → `buildAss()` หรือ filter `ass=subs.ass` อาจผิด
+2. **Progress bar ที่ 2%** — `onProgress(2)` หลังจาก `getFFmpeg()` แต่ UI อาจไม่ refresh
+3. **Error handling** — error toast แสดง "FFmpeg.wasm ไม่สำเร็จ" ไม่ถูกต้องเมื่อเป็น subtitle error
+4. **Retry logic** — ใน page.tsx retry 3 ครั้ง ทุกครั้งจะ `terminateFFmpeg()` + `getFFmpeg()` ใหม่
+
+---
+
+## วิธีเช็คว่า Render เริ่มทำงาน
+
+เปิด DevTools Console แล้วดู log:
+
+```
+[render] Step 1/7: getFFmpeg (โหลด core+wasm)...
+[ffmpeg] Loading core.js + core.wasm from self-host: /subzeed/ffmpeg
+[ffmpeg] Self-host OK
+[ffmpeg] All 3 assets fetched, calling ffmpeg.load() (single-thread)...
+[ffmpeg] FFmpeg ready          ← ถ้าขึ้นนี้แปลว่า load สำเร็จ
+[render] Step 2/7: encoding...
+[render] Step 3/7 done
+```
+
+---
+
+## เวอร์ชันที่ใช้
+
+| package | เวอร์ชัน |
+|---------|---------|
+| `@ffmpeg/ffmpeg` | `0.12.10` |
+| `@ffmpeg/core` | `0.12.10` |
+| `@ffmpeg/util` | ล่าสุด |

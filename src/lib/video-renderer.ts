@@ -65,8 +65,12 @@ const CRF_MAP: Record<QualityPreset, number> = { best: 18, high: 23, medium: 28,
 const VP9_CRF_MAP: Record<QualityPreset, number> = { best: 25, high: 30, medium: 35, fast: 40 };
 
 // ─── CDN Base URLs (ปักหมุดเวอร์ชันตายตัว) ────────────
-const CORE_CDN = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
-const FFMPEG_CDN = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+// ⭐ ใช้ jsDelivr เป็นหลัก (CloudFlare PoP ใกล้ไทย มี reliability สูงกว่า unpkg)
+// Fallback: ถ้า jsDelivr ล้ม → unpkg
+const CORE_CDN = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
+const FFMPEG_CDN = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+const CORE_CDN_FALLBACK = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
+const FFMPEG_CDN_FALLBACK = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
 
 // ─── Timeouts ───────────────────────────────────────────
 const FFMPEG_LOAD_TIMEOUT_MS = 30_000; // โหลด core+wasm จาก CDN เกิน 30s ถือว่าค้าง
@@ -141,14 +145,29 @@ async function getFFmpeg(): Promise<FFmpeg> {
       if (type === 'error') console.error('[ffmpeg]', message);
     });
     try {
-      console.log('[ffmpeg] Loading core.js + core.wasm from unpkg...');
       // ⭐ coreURL/wasmURL: ส่ง CDN URL ตรงๆ (ไม่ผ่าน toBlobURL)
       // classWorkerURL เท่านั้นที่ต้องเป็น Blob URL
-      const workerBlobURL = await toBlobURL(`${FFMPEG_CDN}/worker.js`, 'text/javascript');
+      let coreURL = `${CORE_CDN}/ffmpeg-core.js`;
+      let wasmURL = `${CORE_CDN}/ffmpeg-core.wasm`;
+      let workerURL = `${FFMPEG_CDN}/worker.js`;
+
+      // ลองโหลด core.js ก่อนเพื่อเช็คว่า CDN ใช้ได้
+      try {
+        const testResp = await fetch(coreURL, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+        if (!testResp.ok) throw new Error(`HEAD ${testResp.status}`);
+      } catch {
+        console.warn('[ffmpeg] jsDelivr not reachable, falling back to unpkg');
+        coreURL = `${CORE_CDN_FALLBACK}/ffmpeg-core.js`;
+        wasmURL = `${CORE_CDN_FALLBACK}/ffmpeg-core.wasm`;
+        workerURL = `${FFMPEG_CDN_FALLBACK}/worker.js`;
+      }
+
+      console.log('[ffmpeg] Loading core.js + core.wasm...');
+      const workerBlobURL = await toBlobURL(workerURL, 'text/javascript');
       console.log('[ffmpeg] Calling ffmpeg.load()...');
       await instance.load({
-        coreURL: `${CORE_CDN}/ffmpeg-core.js`,
-        wasmURL: `${CORE_CDN}/ffmpeg-core.wasm`,
+        coreURL,
+        wasmURL,
         classWorkerURL: workerBlobURL,
       });
 

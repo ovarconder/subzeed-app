@@ -159,12 +159,9 @@ async function getFFmpeg(): Promise<FFmpeg> {
       if (type === 'error') console.error('[ffmpeg]', message);
     });
     try {
-      // ⭐ Self-host: ไฟล์ใน public/ffmpeg/ → serve ที่ root (ไม่ใช่ /subzeed/)
-      // ต้องใช้ origin จริงในการอ้างอิง เพราะ instance.load() จะ redirect
-      // WASM fetch ผ่าน worker ภายใน ซึ่งไม่รู้ basePath
-      const selfHostBase = typeof window !== 'undefined'
-        ? `${window.location.protocol}//${window.location.host}/ffmpeg`
-        : '/ffmpeg';
+      // ⭐ Self-host: ไฟล์ใน public/ffmpeg/ → serve ที่ /subzeed/ffmpeg/
+      // (เนื่องจาก basePath='/subzeed' และ public/ ถูก serve ภายใต้ basePath)
+      const selfHostBase = '/subzeed/ffmpeg';
 
       console.log('[ffmpeg] Loading core.js + core.wasm from self-host:', selfHostBase);
 

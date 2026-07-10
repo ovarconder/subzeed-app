@@ -159,20 +159,33 @@ async function getFFmpeg(): Promise<FFmpeg> {
       if (type === 'error') console.error('[ffmpeg]', message);
     });
     try {
-      // ⭐ โหลดทั้ง 3 ไฟล์ผ่าน fetch โดยตรง (เพื่อให้ timeout ได้จริง)
-      // แล้วสร้าง Blob URL จาก response → ส่งให้ ffmpeg.load()
-      console.log('[ffmpeg] Fetching core.js + core.wasm + worker.js from CDN...');
+      // ⭐ Self-host: ไฟล์ใน public/ffmpeg/ → serve ที่ root (ไม่ใช่ /subzeed/)
+      // ต้องใช้ origin จริงในการอ้างอิง เพราะ instance.load() จะ redirect
+      // WASM fetch ผ่าน worker ภายใน ซึ่งไม่รู้ basePath
+      const selfHostBase = typeof window !== 'undefined'
+        ? `${window.location.protocol}//${window.location.host}/ffmpeg`
+        : '/ffmpeg';
 
-      const [coreResp, wasmResp, workerResp] = await Promise.all([
-        fetchWithTimeout(`${CORE_CDN}/ffmpeg-core.js`, 'jsDelivr core.js', 25_000),
-        fetchWithTimeout(`${CORE_CDN}/ffmpeg-core.wasm`, 'jsDelivr core.wasm', 25_000),
-        fetchWithTimeout(`${FFMPEG_CDN}/worker.js`, 'jsDelivr worker.js', 25_000),
-      ]);
+      console.log('[ffmpeg] Loading core.js + core.wasm from self-host:', selfHostBase);
 
-      // ถ้า fetch สำเร็จ → สร้าง Blob URL
-      const coreBlobURL = URL.createObjectURL(await coreResp.blob());
-      const wasmBlobURL = URL.createObjectURL(await wasmResp.blob());
-      const workerBlobURL = URL.createObjectURL(await workerResp.blob());
+      // ลอง self-host ก่อน; ถ้าไม่มีไฟล์ → fallback CDN
+      let coreURL: string, wasmURL: string, workerURL: string;
+      try {
+        await fetchWithTimeout(`${selfHostBase}/ffmpeg-core.js`, 'self-host core.js', 3_000);
+        console.log('[ffmpeg] Self-host OK');
+        coreURL = `${selfHostBase}/ffmpeg-core.js`;
+        wasmURL = `${selfHostBase}/ffmpeg-core.wasm`;
+        workerURL = `${selfHostBase}/worker.js`;
+      } catch {
+        console.warn('[ffmpeg] Self-host not available, falling back to CDN');
+        coreURL = `${CORE_CDN}/ffmpeg-core.js`;
+        wasmURL = `${CORE_CDN}/ffmpeg-core.wasm`;
+        workerURL = `${FFMPEG_CDN}/worker.js`;
+      }
+
+      const coreBlobURL = await toBlobURL(coreURL, 'text/javascript');
+      const wasmBlobURL = await toBlobURL(wasmURL, 'application/wasm');
+      const workerBlobURL = await toBlobURL(workerURL, 'text/javascript');
 
       console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load()...');
       await instance.load({

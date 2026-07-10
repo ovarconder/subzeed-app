@@ -65,12 +65,8 @@ const CRF_MAP: Record<QualityPreset, number> = { best: 18, high: 23, medium: 28,
 const VP9_CRF_MAP: Record<QualityPreset, number> = { best: 25, high: 30, medium: 35, fast: 40 };
 
 // ─── CDN Base URLs (ปักหมุดเวอร์ชันตายตัว) ────────────
-// ⭐ ใช้ jsDelivr เป็นหลัก (CloudFlare PoP ใกล้ไทย มี reliability สูงกว่า unpkg)
-// Fallback: ถ้า jsDelivr ล้ม → unpkg
+// ⭐ Fallback สำหรับตอน self-host ไม่มี (ex: local dev)
 const CORE_CDN = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
-const FFMPEG_CDN = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
-const CORE_CDN_FALLBACK = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
-const FFMPEG_CDN_FALLBACK = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
 
 // ─── Timeouts ───────────────────────────────────────────
 const FFMPEG_LOAD_TIMEOUT_MS = 30_000; // โหลด core+wasm จาก CDN เกิน 30s ถือว่าค้าง
@@ -160,35 +156,33 @@ async function getFFmpeg(): Promise<FFmpeg> {
     });
     try {
       // ⭐ Self-host: ไฟล์ใน public/ffmpeg/ → serve ที่ /subzeed/ffmpeg/
-      // (เนื่องจาก basePath='/subzeed' และ public/ ถูก serve ภายใต้ basePath)
       const selfHostBase = '/subzeed/ffmpeg';
 
       console.log('[ffmpeg] Loading core.js + core.wasm from self-host:', selfHostBase);
 
       // ลอง self-host ก่อน; ถ้าไม่มีไฟล์ → fallback CDN
-      let coreURL: string, wasmURL: string, workerURL: string;
+      let coreURL: string, wasmURL: string;
       try {
         await fetchWithTimeout(`${selfHostBase}/ffmpeg-core.js`, 'self-host core.js', 3_000);
         console.log('[ffmpeg] Self-host OK');
         coreURL = `${selfHostBase}/ffmpeg-core.js`;
         wasmURL = `${selfHostBase}/ffmpeg-core.wasm`;
-        workerURL = `${selfHostBase}/worker.js`;
       } catch {
         console.warn('[ffmpeg] Self-host not available, falling back to CDN');
         coreURL = `${CORE_CDN}/ffmpeg-core.js`;
         wasmURL = `${CORE_CDN}/ffmpeg-core.wasm`;
-        workerURL = `${FFMPEG_CDN}/worker.js`;
       }
 
       const coreBlobURL = await toBlobURL(coreURL, 'text/javascript');
       const wasmBlobURL = await toBlobURL(wasmURL, 'application/wasm');
-      const workerBlobURL = await toBlobURL(workerURL, 'text/javascript');
+      // ⭐ ไม่ใช้ classWorkerURL — single-thread mode
+      // internal worker ของ @ffmpeg/ffmpeg อาจมีปัญหาใน Vercel proxy environment
+      // ใช้ single-thread mode (ผ่าน core.js โดยตรง) เรียบง่ายกว่า
 
-      console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load()...');
+      console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load() (single-thread)...');
       await instance.load({
         coreURL: coreBlobURL,
         wasmURL: wasmBlobURL,
-        classWorkerURL: workerBlobURL,
       });
 
       // ถ้าระหว่างโหลด มีการยกเลิก/reset (terminateFFmpeg ถูกเรียก) ไปแล้ว

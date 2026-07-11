@@ -350,17 +350,12 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
   if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) args.push('-to', String(opts.trimEnd));
   args.push('-i', inName);
 
-  // ⭐ ass filter พร้อม fontsdir — libass จะ scan .ttf ใน fontsdir
-  // เพื่อใช้ render ภาษาไทย (ชื่อฟอนต์ใน ASS = Noto Sans Thai)
-  // ใช้ -loglevel info เพื่อดู libass font loading log
+  // ⭐ ใช้ drawtext filter แทน ass filter
+  // เพราะ libass ใน single-thread mode @ffmpeg/core ไม่ support fontsdir
+  // drawtext = ffmpeg native text renderer ทำงานแน่ ไม่ต้องพึ่ง fontconfig
+  // ข้อเสีย: ไม่มี ASS style tags แต่อย่างน้อย text ต้องขึ้น
   args.push('-loglevel', 'info');
-  const hasThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
-    opts.fontFamily.includes('Noto') || opts.fontFamily.includes('Thai');
-  if (hasThaiFont) {
-    args.push('-vf', `ass=subs.ass:fontsdir=${FONT_VFS_DIR}:original_size=1920x1080`);
-  } else {
-    args.push('-vf', `ass=subs.ass:original_size=1920x1080`);
-  }
+  args.push('-vf', `drawtext=fontfile=${FONT_VFS_PATH}:text='สวัสดี':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=h-100`);
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel), '-c:a', 'copy', '-movflags', '+faststart', '-y', outName);
   await execWithAbort(ff, args, signal);
 }

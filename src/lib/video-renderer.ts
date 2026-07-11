@@ -152,7 +152,7 @@ async function getFFmpeg(): Promise<FFmpeg> {
   ffmpegLoadPromise = (async () => {
     const instance = new FFmpeg();
     instance.on('log', ({ type, message }) => {
-      if (type === 'error') console.error('[ffmpeg]', message);
+      if (type === 'warn' || type === 'error') console.log('[ffmpeg]', type, message);
     });
     try {
       // ⭐ Self-host: ไฟล์ใน public/ffmpeg/ → serve ที่ /subzeed/ffmpeg/
@@ -352,12 +352,14 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
 
   // ⭐ ass filter พร้อม fontsdir — libass จะ scan .ttf ใน fontsdir
   // เพื่อใช้ render ภาษาไทย (ชื่อฟอนต์ใน ASS = Noto Sans Thai)
+  // ใช้ -loglevel info เพื่อดู libass font loading log
+  args.push('-loglevel', 'info');
   const hasThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
     opts.fontFamily.includes('Noto') || opts.fontFamily.includes('Thai');
   if (hasThaiFont) {
-    args.push('-vf', `ass=subs.ass:fontsdir=${FONT_VFS_DIR}`);
+    args.push('-vf', `ass=subs.ass:fontsdir=${FONT_VFS_DIR}:original_size=1920x1080`);
   } else {
-    args.push('-vf', 'ass=subs.ass');
+    args.push('-vf', `ass=subs.ass:original_size=1920x1080`);
   }
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel), '-c:a', 'copy', '-movflags', '+faststart', '-y', outName);
   await execWithAbort(ff, args, signal);

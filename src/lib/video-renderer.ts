@@ -66,7 +66,7 @@ const VP9_CRF_MAP: Record<QualityPreset, number> = { best: 25, high: 30, medium:
 
 // ─── CDN Base URLs (ปักหมุดเวอร์ชันตายตัว) ────────────
 // ⭐ Fallback สำหรับตอน self-host ไม่มี (ex: local dev)
-const CORE_CDN = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.10/dist/umd';
+const CORE_CDN = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
 
 // ─── Timeouts ───────────────────────────────────────────
 const FFMPEG_LOAD_TIMEOUT_MS = 30_000; // โหลด core+wasm จาก CDN เกิน 30s ถือว่าค้าง
@@ -175,17 +175,15 @@ async function getFFmpeg(): Promise<FFmpeg> {
 
       const coreBlobURL = await toBlobURL(coreURL, 'text/javascript');
       const wasmBlobURL = await toBlobURL(wasmURL, 'application/wasm');
-      // ⭐ ใช้ core-mt (multi-thread) + classWorkerURL
-      // core-mt มี fontconfig ที่ support fontsdir สำหรับ ass filter
-      // single-thread core ไม่มี fontconfig → libass render Thai text ไม่ได้
-      const workerURL = `${selfHostBase}/worker.js`;
-      const workerBlobURL = await toBlobURL(workerURL, 'text/javascript');
+      // ⭐ กลับไป single-thread mode (ไม่มี classWorkerURL)
+      // core-mt + classWorkerURL = instance.load() ค้างใน Vercel proxy
+      // single-thread core ทำงานได้แต่ไม่มี fontconfig → ใช้ drawtext filter
+      // ซึ่งไม่ต้องพึ่ง libass fontconfig
 
-      console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load() (multi-thread)...');
+      console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load() (single-thread)...');
       await instance.load({
         coreURL: coreBlobURL,
         wasmURL: wasmBlobURL,
-        classWorkerURL: workerBlobURL,
       });
 
       // ถ้าระหว่างโหลด มีการยกเลิก/reset (terminateFFmpeg ถูกเรียก) ไปแล้ว
@@ -353,15 +351,10 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
   if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) args.push('-to', String(opts.trimEnd));
   args.push('-i', inName);
 
-  // ⭐ ass filter พร้อม fontsdir — libass (ใน core-mt + classWorkerURL)
-  // มี fontconfig ที่ scan fontsdir และ match 'Noto Sans Thai' ได้
-  const hasThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
-    opts.fontFamily.includes('Noto') || opts.fontFamily.includes('Thai');
-  if (hasThaiFont) {
-    args.push('-vf', `ass=subs.ass:fontsdir=${FONT_VFS_DIR}`);
-  } else {
-    args.push('-vf', 'ass=subs.ass');
-  }
+  // ⭐ ใช้ drawtext filter เพื่อ burn-in subtitle โดยตรง
+  // single-thread mode core ไม่มี libass fontconfig → ass filter ไม่ได้
+  // drawtext = ffmpeg native text renderer ใช้ fontfile โดยตรง
+  args.push('-vf', `drawtext=text='สวัสดี':fontfile='${FONT_VFS_PATH}':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=h-100`);
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel), '-c:a', 'copy', '-movflags', '+faststart', '-y', outName);
   await execWithAbort(ff, args, signal);
 }

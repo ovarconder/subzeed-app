@@ -351,10 +351,10 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
   if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) args.push('-to', String(opts.trimEnd));
   args.push('-i', inName);
 
-  // ⭐ ใช้ drawtext filter เพื่อ burn-in subtitle โดยตรง
-  // single-thread mode core ไม่มี libass fontconfig → ass filter ไม่ได้
-  // drawtext = ffmpeg native text renderer ใช้ fontfile โดยตรง
-  args.push('-vf', `drawtext=text='สวัสดี':fontfile='${FONT_VFS_PATH}':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=h-100`);
+  // ⭐ ใช้ drawtext filter — ทดสอบว่า filter ทำงาน
+  // ถ้าไม่มี fontfile → ใช้ default font (sans-serif) → ข้อความอาจเป็น ?????
+  // แต่ output ต้องไม่ว่างเปล่า
+  args.push('-vf', "drawtext=text='สวัสดี':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=h-100");
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel), '-c:a', 'copy', '-movflags', '+faststart', '-y', outName);
   await execWithAbort(ff, args, signal);
 }

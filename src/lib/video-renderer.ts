@@ -175,15 +175,24 @@ async function getFFmpeg(): Promise<FFmpeg> {
 
       const coreBlobURL = await toBlobURL(coreURL, 'text/javascript');
       const wasmBlobURL = await toBlobURL(wasmURL, 'application/wasm');
-      // ⭐ กลับไป single-thread mode (ไม่มี classWorkerURL)
-      // core-mt + classWorkerURL = instance.load() ค้างใน Vercel proxy
-      // single-thread core ทำงานได้แต่ไม่มี fontconfig → ใช้ drawtext filter
-      // ซึ่งไม่ต้องพึ่ง libass fontconfig
+      // ⭐ ใช้ classWorkerURL (self-host worker.js)
+      // commit 5e93cb2 ใช้ classWorkerURL แล้ว subtitle ทำงาน
+      // worker.js เสิร์ฟจาก /subzeed/ffmpeg/worker.js (self-host)
+      let workerBlobURL: string | undefined;
+      try {
+        const workerResp = await fetchWithTimeout(`${selfHostBase}/worker.js`, 'worker.js', 3_000);
+        workerBlobURL = await toBlobURL(workerResp.url, 'text/javascript');
+        console.log('[ffmpeg] worker.js loaded from self-host');
+      } catch {
+        console.warn('[ffmpeg] worker.js fallback to CDN');
+        workerBlobURL = await toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js', 'text/javascript');
+      }
 
-      console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load() (single-thread)...');
+      console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load() (multi-thread)...');
       await instance.load({
         coreURL: coreBlobURL,
         wasmURL: wasmBlobURL,
+        classWorkerURL: workerBlobURL,
       });
 
       // ถ้าระหว่างโหลด มีการยกเลิก/reset (terminateFFmpeg ถูกเรียก) ไปแล้ว
@@ -351,10 +360,13 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
   if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) args.push('-to', String(opts.trimEnd));
   args.push('-i', inName);
 
-  // ⭐ ใช้ drawtext filter — ทดสอบว่า filter ทำงาน
-  // ถ้าไม่มี fontfile → ใช้ default font (sans-serif) → ข้อความอาจเป็น ?????
-  // แต่ output ต้องไม่ว่างเปล่า
-  args.push('-vf', "drawtext=text='สวัสดี':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=h-100");
+  // ⭐ ass filter — libass ใช้ classWorkerURL (multi-thread mode)
+  // support fontsdir + fontconfig
+  if (opts.fontFamily === FONT_FAMILY_NAME || opts.fontFamily.includes('Noto') || opts.fontFamily.includes('Thai')) {
+    args.push('-vf', `ass=subs.ass:fontsdir=/fonts`);
+  } else {
+    args.push('-vf', 'ass=subs.ass');
+  }
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel), '-c:a', 'copy', '-movflags', '+faststart', '-y', outName);
   await execWithAbort(ff, args, signal);
 }

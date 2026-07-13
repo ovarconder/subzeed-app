@@ -84,12 +84,24 @@ try {
 
 ---
 
+## ปัญหาที่ได้รับการแก้ไขแล้ว (July 2026)
+
+1. **Subtitle ไม่ burn-in (แก้ไขแล้ว - July 2026)**
+   * **ปัญหา:** วิดีโอผลลัพธ์ที่ได้จากการส่งออกไม่มีซับไตเติลแสดงผลเลย
+   * **สาเหตุ:** 
+     1. `libass` ในสภาพแวดล้อมแซนด์บ็อกซ์ของ FFmpeg.wasm ไม่มีฟอนต์ระบบติดตั้งอยู่ตั้งแต่แรก และโค้ดเดิมจะดาวน์โหลด/เขียนฟอนต์ `Noto Sans Thai` ลง VFS เฉพาะเมื่อผู้ใช้เลือกใช้ Noto Sans Thai เท่านั้น ทำให้หากผู้ใช้เลือกฟอนต์อื่น (เช่น Arial, Kanit) จะไม่มีฟอนต์ใดเขียนลง VFS เลย
+     2. ไม่มีการระบุพารามิเตอร์ `fontsdir` ให้กับ `subtitles` filter ทำให้อิมเมจของ `libass` หาฟอนต์ในโฟลเดอร์ `/fonts` ไม่เจอ
+     3. ใน `segmentToAss` ไม่มีการระบุ override tags สำหรับ Font Name (`\\fnNoto Sans Thai`)
+   * **การแก้ไข:**
+     1. บังคับให้ดาวน์โหลดและเขียนฟอนต์ภาษาไทย Noto Sans Thai ลงโฟลเดอร์ `/fonts/NotoSansThai-Regular.ttf` ใน VFS ทุกครั้งที่มีการส่งออกเพื่อทำหน้าที่เป็น Fallback Font กลาง
+     2. อัปเดตพารามิเตอร์ของ `subtitles` filter ใน `renderVideo` และ `renderGif` ให้เป็น `subtitles=subs.ass:fontsdir=/fonts` เสมอ เพื่อบังคับให้ค้นหาฟอนต์ในโฟลเดอร์เสมือน
+     3. ใส่ `\\fnNoto Sans Thai` เข้าใน Segment tags ของ ASS เสมอเพื่อให้แน่ใจว่าระบบจะแสดงผลฟอนต์ภาษาไทยนี้ได้อย่างถูกต้อง
+
 ## ปัญหาที่เหลือ (ต้องแก้ต่อ)
 
-1. **Subtitle ไม่ burn-in** — video output ไม่มีซับ → `buildAss()` หรือ filter `ass=subs.ass` อาจผิด
-2. **Progress bar ที่ 2%** — `onProgress(2)` หลังจาก `getFFmpeg()` แต่ UI อาจไม่ refresh
-3. **Error handling** — error toast แสดง "FFmpeg.wasm ไม่สำเร็จ" ไม่ถูกต้องเมื่อเป็น subtitle error
-4. **Retry logic** — ใน page.tsx retry 3 ครั้ง ทุกครั้งจะ `terminateFFmpeg()` + `getFFmpeg()` ใหม่
+1. **Progress bar ที่ 2%** — `onProgress(2)` หลังจาก `getFFmpeg()` แต่ UI อาจไม่ refresh
+2. **Error handling** — error toast แสดง "FFmpeg.wasm ไม่สำเร็จ" ไม่ถูกต้องเมื่อเป็น subtitle error
+3. **Retry logic** — ใน page.tsx retry 3 ครั้ง ทุกครั้งจะ `terminateFFmpeg()` + `getFFmpeg()` ใหม่
 
 ---
 

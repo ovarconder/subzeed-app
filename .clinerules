@@ -1,0 +1,43 @@
+# SUBZEED MASTER BLUEPRINT AND RULES FOR CLINE AGENT
+
+1. PROJECT OVERVIEW AND TECH STACK
+- Project Name: SubZeed (A cost-effective Thai subtitle generation web application)
+- Tech Stack: Next.js (App Router), Supabase (Auth and Database), Zustand (State Management), Stripe (Payment Gateway)
+- Deployment Platform: Vercel (Root App URL: overconda.space/subzeed)
+
+2. CORE BUSINESS AND BILLING LOGIC
+- Billing System: Anniversary Billing System (30-day cycle based on the exact registration date)
+- Quota Renewal: If data quota runs out early, users can purchase a new package immediately, which resets the expiration date to another 30 days from the purchase time.
+- Unused Quota: Remaining minutes at the end of the billing cycle are cleared and do not roll over to the next month.
+- Renew Early Rule: If users renew before expiration while they still have quota left, the remaining minutes are fully rolled over and added to the new package quota, and the expiration date is extended by 30 days from the transaction time.
+
+3. LOCALIZATION AND STRIPE PRICING POLICY
+- Feature Implementation Priority: All developers must focus heavily on stabilizing the core application functions first. Small features like multi-language support will be implemented later.
+- Local Price (Thailand): Package prices are set in Thai Baht (THB), such as Basic 89 THB/month and Premium 169 THB/month.
+- International Price (Global): The app will apply a completely different price structure set in US Dollars (USD) for international users.
+- Stripe Dynamic Pricing: The application must detect the user's locale or IP location on the client side to fetch the correct Product Price ID from Stripe.
+
+4. CRITICAL TECHNICAL RULES
+
+Rule 4.1: Dynamic basePath Configuration
+- Current Setup: The app is deployed under a reverse proxy configuration at overconda.space/subzeed, meaning next.config.ts has a basePath set to "/subzeed". Every production route requires this prefix.
+- Future Setup: When migrating to a dedicated standalone custom domain, the basePath will be empty (Dynamic basePath behavior).
+- Implementation Action: Never call native fetch('/api/...') directly from the client side. Developers must always wrap client-side requests with the api() helper imported from "@/lib/api" to dynamically append the basePath environment variables based on window.location.pathname.
+
+Rule 4.2: Next.js API Route Auth Guard
+- The API Route Handler cannot read session cookies using createServerSupabase() with cookies(), which always returns a 401 Unauthorized error.
+- Implementation Action: Use the verifyAdmin(request) helper. The client side must pass the user ID inside the "x-user-id" HTTP header. The server side will then utilize createServiceSupabase() to query the user profile directly and check for super admin privileges or matching email context.
+
+5. TECHNICAL WORKFLOW AND TESTING
+- Code Modifications: Do not rewrite the entire file structure. Only modify specific code blocks that need changes. Never omit existing working code logic or replace them with shorthand placeholders.
+- Pre-commit Testing: Before finalizing tasks, developers must run build tests or thoroughly execute TypeScript type checks to ensure there are no active errors.
+- Documentation: Major architectural updates must be logged into the related markdown files inside the /docs folder before performing Git commit and push actions.
+
+6. NODE.JS EMERGENCY TERMINAL SETUP
+- Problem: The internal VS Code terminal or specific workspace plugins on macOS environment may lose node, npm, or npx from the system PATH variable.
+- Resolution Command: If terminal commands fail with missing execution paths, run this environment activation script in the terminal immediately before executing any npm/npx actions:
+export N_PREFIX=/usr/local/n && export PATH=/usr/local/n/versions/node/22.14.0/bin:$PATH
+- Verification: Always verify that node --version prints v22.14.0 and npm --version prints 10.9.2 after running the path rescue script.
+
+# Very Important
+- response with Thai language

@@ -175,24 +175,15 @@ async function getFFmpeg(): Promise<FFmpeg> {
 
       const coreBlobURL = await toBlobURL(coreURL, 'text/javascript');
       const wasmBlobURL = await toBlobURL(wasmURL, 'application/wasm');
-      // ⭐ ใช้ classWorkerURL (self-host worker.js)
-      // commit 5e93cb2 ใช้ classWorkerURL แล้ว subtitle ทำงาน
-      // worker.js เสิร์ฟจาก /subzeed/ffmpeg/worker.js (self-host)
-      let workerBlobURL: string | undefined;
-      try {
-        const workerResp = await fetchWithTimeout(`${selfHostBase}/worker.js`, 'worker.js', 3_000);
-        workerBlobURL = await toBlobURL(workerResp.url, 'text/javascript');
-        console.log('[ffmpeg] worker.js loaded from self-host');
-      } catch {
-        console.warn('[ffmpeg] worker.js fallback to CDN');
-        workerBlobURL = await toBlobURL('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js', 'text/javascript');
-      }
+      // ⭐ Single-thread mode (ไม่มี classWorkerURL)
+      // Multi-thread ต้องการ SharedArrayBuffer + COOP/COEP headers
+      // ซึ่ง Vercel ไม่ได้ตั้ง → load() ค้าง
+      // Single-thread โหลดผ่านเสมอ
 
-      console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load() (multi-thread)...');
+      console.log('[ffmpeg] All 3 assets fetched, calling ffmpeg.load() (single-thread)...');
       await instance.load({
         coreURL: coreBlobURL,
         wasmURL: wasmBlobURL,
-        classWorkerURL: workerBlobURL,
       });
 
       // ถ้าระหว่างโหลด มีการยกเลิก/reset (terminateFFmpeg ถูกเรียก) ไปแล้ว
@@ -292,12 +283,10 @@ export async function renderVideoWithSubtitles(
     console.log('[render] Step 2/7 done, size:', videoData.size);
     onProgress?.(8);
 
-    const needsThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
-      subtitles.some(s => s.segments?.some(seg => seg.style.fontFamily === FONT_FAMILY_NAME));
-    if (needsThaiFont) {
-      try { await ff.createDir(FONT_VFS_DIR); } catch {}
-      try { await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL)); } catch {}
-    }
+    // เขียนไฟล์ฟอนต์ภาษาไทย Noto Sans Thai เข้าสู่ Virtual Filesystem (VFS) เสมอ
+    // เพื่อการันตีว่าระบบ Render ของ FFmpeg (ผ่าน libass) จะวาดภาษาไทยได้โดยไม่ว่างเปล่า
+    try { await ff.createDir(FONT_VFS_DIR); } catch {}
+    try { await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL)); } catch {}
     checkAborted();
 
     const ass = buildAss(subtitles, opts);
@@ -360,13 +349,8 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
   if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) args.push('-to', String(opts.trimEnd));
   args.push('-i', inName);
 
-  // ⭐ ass filter — libass ใช้ classWorkerURL (multi-thread mode)
-  // support fontsdir + fontconfig
-  if (opts.fontFamily === FONT_FAMILY_NAME || opts.fontFamily.includes('Noto') || opts.fontFamily.includes('Thai')) {
-    args.push('-vf', `ass=subs.ass:fontsdir=/fonts`);
-  } else {
-    args.push('-vf', 'ass=subs.ass');
-  }
+  // กำหนดพารามิเตอร์ fontsdir=/fonts เพื่อบังคับให้ libass ค้นหาไฟล์ฟอนต์ภาษาไทยจาก /fonts ใน VFS
+  args.push('-vf', 'subtitles=subs.ass:fontsdir=/fonts');
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel), '-c:a', 'copy', '-movflags', '+faststart', '-y', outName);
   await execWithAbort(ff, args, signal);
 }
@@ -377,10 +361,8 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
   const scale = `scale=${opts.gifMaxWidth}:-1:flags=lanczos`;
   const trimFilter = (opts.trimStart !== undefined || opts.trimEnd !== undefined)
     ? `trim=${opts.trimStart ?? 0}:${opts.trimEnd ?? 9999},setpts=PTS-STARTPTS,` : '';
-  const hasThaiFont = opts.fontFamily === FONT_FAMILY_NAME ||
-    opts.fontFamily.includes('Noto') || opts.fontFamily.includes('Thai');
-
-  const subF = hasThaiFont ? `ass=subs.ass:fontsdir=${FONT_VFS_DIR}` : 'ass=subs.ass';
+  // กำหนดพารามิเตอร์ fontsdir=/fonts เพื่อบังคับให้ libass ค้นหาไฟล์ฟอนต์ภาษาไทยจาก /fonts ใน VFS
+  const subF = 'subtitles=subs.ass:fontsdir=/fonts';
   try {
     const pa: string[] = [];
     if (opts.trimStart !== undefined && opts.trimStart > 0) pa.push('-ss', String(opts.trimStart));
@@ -458,6 +440,7 @@ function segmentToAss(seg: TextSegment, fallbackFontFamily: string, fallbackFont
   const tags: string[] = [];
   // ⭐ ใช้ 'Noto Sans Thai' (ตรงกับชื่อฟอนต์ที่ writeFile ไว้ใน VFS)
   const segFont = 'Noto Sans Thai';
+  tags.push(`\\fn${segFont}`);
   const segSize = st.fontSize || fallbackFontSize;
   if (segSize !== fallbackFontSize) tags.push(`\\fs${segSize}`);
   tags.push(`\\c${hexToAssColor(st.color)}`);

@@ -281,19 +281,28 @@ export async function renderVideoWithSubtitles(
     console.log('[render] Step 2/7 done, size:', videoData.size);
     onProgress?.(8);
 
-    // ─── Dynamic Font Loading ───────────────────
-    // โหลดฟอนต์ที่ผู้ใช้เลือก (หรือ fallback เป็น Arial) และเขียนลง VFS
+    // ─── Pre-emptive Font Loading ───────────────────
+    // โหลดฟอนต์ทั้งหมดใน ALL_FONTS เขียนลง VFS ล่วงหน้า
+    // เพื่อให้ libass หาฟอนต์เจอเสมอ ไม่ว่าจะเลือกฟอนต์ไหนก็ตาม
     try {
       await ff.createDir(FONT_VFS_DIR);
-      const font = ALL_FONTS.find(f => f.value === opts.fontFamily) || ALL_FONTS.find(f => f.value === 'Arimo');
-      if (font) {
-        const fontFileName = font.url.split('/').pop()!;
-        const vfsPath = `${FONT_VFS_DIR}/${fontFileName}`;
-        console.log(`[render] Loading font: ${font.label} from ${font.url}`);
-        await ff.writeFile(vfsPath, await fetchFile(font.url));
-      }
+      console.log('[render] Pre-loading all available fonts into VFS...');
+      const fontPromises = ALL_FONTS.filter(font => font.url).map(async (font) => {
+        try {
+          const fontFileName = font.url.split('/').pop()!;
+          const vfsPath = `${FONT_VFS_DIR}/${fontFileName}`;
+          // ไม่ต้องเช็คว่ามีไฟล์อยู่แล้วหรือไม่ writeFile จะเขียนทับไปเลย
+          await ff.writeFile(vfsPath, await fetchFile(font.url));
+          console.log(`[render]  - Font '${font.label}' loaded into ${vfsPath}`);
+        } catch (e) {
+          console.warn(`[render]  - Failed to load font '${font.label}':`, e);
+        }
+      });
+      await Promise.all(fontPromises);
+      console.log('[render] All fonts pre-loaded.');
     } catch (fontError) {
-      console.warn(`[render] Could not load font ${opts.fontFamily}, will fallback.`, fontError);
+      console.error('[render] Critical error during font pre-loading.', fontError);
+      // อาจจะ throw error ที่นี่เพื่อให้ render หยุดทำงานไปเลยก็ได้
     }
     checkAborted();
 

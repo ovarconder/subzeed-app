@@ -44,7 +44,7 @@ export interface RenderOptions {
 }
 
 const DEFAULT_RENDER_OPTIONS: RenderOptions = {
-  fontFamily: 'Arial',
+  fontFamily: 'Arimo',
   fontSize: 36,
   fontColor: 'white',
   strokeColor: 'black',
@@ -285,7 +285,7 @@ export async function renderVideoWithSubtitles(
     // โหลดฟอนต์ที่ผู้ใช้เลือก (หรือ fallback เป็น Arial) และเขียนลง VFS
     try {
       await ff.createDir(FONT_VFS_DIR);
-      const font = ALL_FONTS.find(f => f.value === opts.fontFamily) || ALL_FONTS.find(f => f.value === 'Arial');
+      const font = ALL_FONTS.find(f => f.value === opts.fontFamily) || ALL_FONTS.find(f => f.value === 'Arimo');
       if (font) {
         const fontFileName = font.url.split('/').pop()!;
         const vfsPath = `${FONT_VFS_DIR}/${fontFileName}`;

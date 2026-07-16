@@ -27,7 +27,7 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     quotaMinutes: 20,
     maxVideoMinutes: 3,
     watermark: true,
-    fonts: ['Arial'],
+    fonts: ['Arimo'],
     aiVocabulary: false,
     positionAdjust: false,
     textAnimation: false,
@@ -404,7 +404,7 @@ export interface FontConfig {
 }
 
 export const ALL_FONTS: FontConfig[] = [
-  { value: 'Arial', label: 'Arial (มาตรฐาน)', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/apache/arimo/Arimo-Regular.ttf' },
+  { value: 'Arimo', label: 'Arial (มาตรฐาน)', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/apache/arimo/Arimo-Regular.ttf' },
   { value: 'Kanit', label: 'Kanit', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/kanit/Kanit-Regular.ttf' },
   { value: 'Itim', label: 'Itim', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/itim/Itim-Regular.ttf' },
   { value: 'Chonburi', label: 'Chonburi', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/chonburi/Chonburi-Regular.ttf' },

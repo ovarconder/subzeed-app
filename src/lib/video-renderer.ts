@@ -49,7 +49,7 @@ const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   fontColor: 'white',
   strokeColor: 'black',
   position: 'bottom',
-  y_offset: 80,
+  y_offset: 10,
   format: 'mp4',
   fps: 30,
   quality: 'high',

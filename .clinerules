@@ -42,3 +42,4 @@ export N_PREFIX=/usr/local/n && export PATH=/usr/local/n/versions/node/22.14.0/b
 
 # Very Important
 - response with Thai language
+- after finished task , commit and push with wait for command. print out the output git activities to terminal screen.

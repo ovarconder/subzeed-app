@@ -392,3 +392,24 @@ export const LLM_PROVIDER_OPTIONS: Record<LlmProvider, { label: string; models: 
     models: ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'qwen/qwen3-32b', 'mixtral-8x7b-32768'],
   },
 };
+
+// ============================================================
+// 🔤 SHARED FONT CONFIGURATION — ฟอนต์ภาษาไทยสำหรับระบบแก้ไขและเรนเดอร์
+// ============================================================
+
+export interface FontConfig {
+  value: string;
+  label: string;
+  url: string;
+}
+
+export const ALL_FONTS: FontConfig[] = [
+  { value: 'Arial', label: 'Arial (มาตรฐาน)', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/apache/arimo/Arimo-Regular.ttf' },
+  { value: 'Kanit', label: 'Kanit', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/kanit/Kanit-Regular.ttf' },
+  { value: 'Itim', label: 'Itim', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/itim/Itim-Regular.ttf' },
+  { value: 'Chonburi', label: 'Chonburi', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/chonburi/Chonburi-Regular.ttf' },
+  { value: 'Prompt', label: 'Prompt', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/prompt/Prompt-Regular.ttf' },
+  { value: 'Sarabun', label: 'Sarabun', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sarabun/Sarabun-Regular.ttf' },
+  { value: 'Mali', label: 'Mali', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/mali/Mali-Regular.ttf' },
+  { value: 'Noto Sans Thai', label: 'Noto Sans Thai', url: 'https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansThai/NotoSansThai-Regular.ttf' },
+];

@@ -8,7 +8,7 @@ import type {
   SubscriptionTier,
   FontWeight,
 } from '@/lib/types';
-import { DEFAULT_SEGMENT_STYLE, TIER_CONFIGS } from '@/lib/types';
+import { DEFAULT_SEGMENT_STYLE, TIER_CONFIGS, ALL_FONTS } from '@/lib/types';
 import { useSubtitleStore } from '@/lib/store/subtitle-store';
 
 // ============================================================
@@ -307,21 +307,18 @@ function InlineSubtitleEditor({
               onChange={(e) => updateSegmentStyle(activeSegIdx, { fontFamily: e.target.value })}
               className="w-full rounded border border-border px-1 py-1 text-[10px] bg-white"
             >
-              <option value="Arial">Arial</option>
-              <option value="Arial Black">Arial Black</option>
-              <option value="Verdana">Verdana</option>
-              <option value="Tahoma">Tahoma</option>
-              <option value="Trebuchet MS">Trebuchet MS</option>
-              <option value="Times New Roman">Times New Roman</option>
-              <option value="Georgia">Georgia</option>
-              <option value="Garamond">Garamond</option>
-              <option value="Courier New">Courier New</option>
-              <option value="Brush Script MT">Brush Script MT</option>
-              <option value="Impact">Impact</option>
-              <option value="Comic Sans MS">Comic Sans MS</option>
-              <option value="Kanit">Kanit</option>
-              <option value="Sarabun">Sarabun</option>
-              <option value="Noto Sans Thai">Noto Sans Thai</option>
+              {(() => {
+                const tierConfig = TIER_CONFIGS[tier] || TIER_CONFIGS.free;
+                const allowedFonts = tierConfig.fonts || ['Arial'];
+                return ALL_FONTS.map(f => {
+                  const isLocked = f.value !== 'Arial' && !allowedFonts.includes(f.value);
+                  return (
+                    <option key={f.value} value={f.value} disabled={isLocked}>
+                      {f.label}{isLocked ? ' 🔒' : ''}
+                    </option>
+                  );
+                });
+              })()}
             </select>
           </div>
 
@@ -927,21 +924,25 @@ function drawSegments(
   position: 'bottom' | 'top' | 'middle',
   displayStyle?: any
 ) {
+  // ─── คำนวณ Ratio (สเกลความสูงเทียบกับ ASS PlayResY: 360) ───
+  const scale = actualH / 360;
+  const scaledFontSize = fontSize * scale;
+
   // ─── คำนวณความกว้างของข้อความ ─────────────────────────
   let totalWidth = 0;
   const metrics: { width: number; style: TextSegmentStyle; text: string }[] = [];
 
   for (const seg of segments) {
     const style = seg.style;
-    ctx.font = buildFontString(style, fontSize, fontFamily);
+    ctx.font = buildFontString(style, scaledFontSize, fontFamily, scale);
     const m = ctx.measureText(seg.text);
     metrics.push({ width: m.width, style, text: seg.text });
     totalWidth += m.width;
   }
 
-  const paddingX = displayStyle?.paddingX ?? fontSize * 0.5;
-  const paddingY = displayStyle?.paddingY ?? fontSize * 0.3;
-  const borderRadius = displayStyle?.borderRadius ?? fontSize * 0.3;
+  const paddingX = (displayStyle?.paddingX ?? fontSize * 0.5) * scale;
+  const paddingY = (displayStyle?.paddingY ?? fontSize * 0.3) * scale;
+  const borderRadius = (displayStyle?.borderRadius ?? fontSize * 0.3) * scale;
   const bgColor = displayStyle?.bgColor ?? '#000000';
   const bgOpacity = displayStyle?.bgOpacity ?? 0.6;
   const bgActive = displayStyle?.bgActive ?? true;
@@ -950,7 +951,7 @@ function drawSegments(
     bs?.active === true && (bs.opacity > 0 || bs.blur > 0 || bs.offsetX !== 0 || bs.offsetY !== 0);
 
   const bgWidth = totalWidth + paddingX * 2;
-  const bgHeight = fontSize * 1.4 + paddingY * 2;
+  const bgHeight = scaledFontSize * 1.4 + paddingY * 2;
 
   const centerX = actualW / 2;
   let boxY: number;
@@ -968,15 +969,15 @@ function drawSegments(
   }
 
   const boxX = bgActive ? centerX - bgWidth / 2 : centerX - totalWidth / 2;
-  const textY = bgActive ? boxY + bgHeight / 2 + fontSize * 0.4 : boxY + fontSize * 0.8;
+  const textY = bgActive ? boxY + bgHeight / 2 + scaledFontSize * 0.4 : boxY + scaledFontSize * 0.8;
 
   // ─── Box Shadow ────────────────────────────────────────
   if (bgActive && hasBoxShadow) {
     ctx.save();
     ctx.shadowColor = bs!.color;
-    ctx.shadowBlur = bs!.blur;
-    ctx.shadowOffsetX = bs!.offsetX;
-    ctx.shadowOffsetY = bs!.offsetY;
+    ctx.shadowBlur = bs!.blur * scale;
+    ctx.shadowOffsetX = bs!.offsetX * scale;
+    ctx.shadowOffsetY = bs!.offsetY * scale;
     ctx.globalAlpha = bs!.opacity;
     ctx.fillStyle = 'rgba(0,0,0,0)';
     ctx.beginPath();
@@ -1009,13 +1010,13 @@ function drawSegments(
     ) {
       ctx.save();
       ctx.globalAlpha = st.shadowOpacity;
-      ctx.font = buildFontString(st, fontSize, fontFamily);
+      ctx.font = buildFontString(st, scaledFontSize, fontFamily, scale);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.shadowColor = st.shadowColor;
-      ctx.shadowBlur = st.shadowBlur;
-      ctx.shadowOffsetX = st.shadowOffsetX;
-      ctx.shadowOffsetY = st.shadowOffsetY;
+      ctx.shadowBlur = st.shadowBlur * scale;
+      ctx.shadowOffsetX = st.shadowOffsetX * scale;
+      ctx.shadowOffsetY = st.shadowOffsetY * scale;
       ctx.fillStyle = st.shadowColor;
       ctx.fillText(m.text, cursorX, textY);
       ctx.restore();
@@ -1025,11 +1026,11 @@ function drawSegments(
     if (st.strokeActive && st.strokeWidth > 0 && st.strokeOpacity > 0) {
       ctx.save();
       ctx.globalAlpha = st.strokeOpacity;
-      ctx.font = buildFontString(st, fontSize, fontFamily);
+      ctx.font = buildFontString(st, scaledFontSize, fontFamily, scale);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.strokeStyle = st.strokeColor;
-      ctx.lineWidth = st.strokeWidth;
+      ctx.lineWidth = st.strokeWidth * scale;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
       ctx.strokeText(m.text, cursorX, textY);
@@ -1039,7 +1040,7 @@ function drawSegments(
     // Fill
     ctx.save();
     ctx.globalAlpha = st.opacity;
-    ctx.font = buildFontString(st, fontSize, fontFamily);
+    ctx.font = buildFontString(st, scaledFontSize, fontFamily, scale);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = st.color;
@@ -1077,13 +1078,14 @@ function drawWatermark(ctx: CanvasRenderingContext2D, actualW: number, actualH: 
 function buildFontString(
   fontWeight: string | TextSegmentStyle,
   fontSize: number,
-  fontFamily: string
+  fontFamily: string,
+  scale: number = 1
 ): string {
   // ถ้า fontWeight เป็น object (pass-through style) ให้ดึง fontFamily จากนั้น
   if (typeof fontWeight === 'object' && fontWeight !== null) {
     const st = fontWeight as TextSegmentStyle;
     const ff = st.fontFamily || fontFamily;
-    const fs = st.fontSize || fontSize;
+    const fs = st.fontSize ? st.fontSize * scale : fontSize;
     switch (st.fontWeight) {
       case 'bold': return `bold ${fs}px ${ff}`;
       case 'italic': return `italic ${fs}px ${ff}`;

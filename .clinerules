@@ -32,6 +32,7 @@ Rule 4.2: Next.js API Route Auth Guard
 - Code Modifications: Do not rewrite the entire file structure. Only modify specific code blocks that need changes. Never omit existing working code logic or replace them with shorthand placeholders.
 - Pre-commit Testing: Before finalizing tasks, developers must run build tests or thoroughly execute TypeScript type checks to ensure there are no active errors.
 - Documentation: Major architectural updates must be logged into the related markdown files inside the /docs folder before performing Git commit and push actions.
+- Git Commit & Push Workflow: After completing a task, prepare for commit and push. Always ask for user confirmation before proceeding. When committing and pushing, display the output, including the commit ID, to confirm success.
 
 6. NODE.JS EMERGENCY TERMINAL SETUP
 - Problem: The internal VS Code terminal or specific workspace plugins on macOS environment may lose node, npm, or npx from the system PATH variable.

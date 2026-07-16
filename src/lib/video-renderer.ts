@@ -17,12 +17,10 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import type { SubtitleEntry, TextSegment } from './types';
+import { ALL_FONTS } from './types';
 
 // ─── Font Constants ────────────────────────────────────
-const FONT_URL = 'https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansThai/NotoSansThai-Regular.ttf';
 const FONT_VFS_DIR = '/fonts';
-const FONT_VFS_PATH = `${FONT_VFS_DIR}/NotoSansThai-Regular.ttf`;
-const FONT_FAMILY_NAME = 'Noto Sans Thai';
 
 // ─── Types ──────────────────────────────────────────────
 export type ExportFormat = 'mp4' | 'webm' | 'mov' | 'gif';
@@ -46,7 +44,7 @@ export interface RenderOptions {
 }
 
 const DEFAULT_RENDER_OPTIONS: RenderOptions = {
-  fontFamily: FONT_FAMILY_NAME,
+  fontFamily: 'Arial',
   fontSize: 36,
   fontColor: 'white',
   strokeColor: 'black',
@@ -283,10 +281,20 @@ export async function renderVideoWithSubtitles(
     console.log('[render] Step 2/7 done, size:', videoData.size);
     onProgress?.(8);
 
-    // เขียนไฟล์ฟอนต์ภาษาไทย Noto Sans Thai เข้าสู่ Virtual Filesystem (VFS) เสมอ
-    // เพื่อการันตีว่าระบบ Render ของ FFmpeg (ผ่าน libass) จะวาดภาษาไทยได้โดยไม่ว่างเปล่า
-    try { await ff.createDir(FONT_VFS_DIR); } catch {}
-    try { await ff.writeFile(FONT_VFS_PATH, await fetchFile(FONT_URL)); } catch {}
+    // ─── Dynamic Font Loading ───────────────────
+    // โหลดฟอนต์ที่ผู้ใช้เลือก (หรือ fallback เป็น Arial) และเขียนลง VFS
+    try {
+      await ff.createDir(FONT_VFS_DIR);
+      const font = ALL_FONTS.find(f => f.value === opts.fontFamily) || ALL_FONTS.find(f => f.value === 'Arial');
+      if (font) {
+        const fontFileName = font.url.split('/').pop()!;
+        const vfsPath = `${FONT_VFS_DIR}/${fontFileName}`;
+        console.log(`[render] Loading font: ${font.label} from ${font.url}`);
+        await ff.writeFile(vfsPath, await fetchFile(font.url));
+      }
+    } catch (fontError) {
+      console.warn(`[render] Could not load font ${opts.fontFamily}, will fallback.`, fontError);
+    }
     checkAborted();
 
     const ass = buildAss(subtitles, opts);
@@ -412,12 +420,12 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
   l.push('[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 640', 'PlayResY: 360', 'ScaledBorderAndShadow: yes', '');
   l.push('[V4+ Styles]');
   l.push('Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding');
-  // ⭐ ใช้ font family 'Noto Sans Thai' (ตรงกับชื่อใน metadata ของ .ttf)
-  // เมื่อ libass เจอ fontsdir → จะ scan .ttf ในนั้นแล้ว register
-  // ถ้าชื่อตรง → ใช้ฟอนต์นั้นสำหรับ render ภาษาไทย
-  l.push(`Style: bottom,Noto Sans Thai,${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`);
-  l.push(`Style: top,Noto Sans Thai,${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,10,1`);
-  l.push(`Style: middle,Noto Sans Thai,${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,5,10,10,10,1`);
+  
+  const fontName = opts.fontFamily;
+
+  l.push(`Style: bottom,${fontName},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`);
+  l.push(`Style: top,${fontName},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,10,1`);
+  l.push(`Style: middle,${fontName},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,5,10,10,10,1`);
   l.push('', '[Events]');
   l.push('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
   subs.forEach((s) => {
@@ -438,9 +446,10 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
 function segmentToAss(seg: TextSegment, fallbackFontFamily: string, fallbackFontSize: number): string {
   const st = seg.style;
   const tags: string[] = [];
-  // ⭐ ใช้ 'Noto Sans Thai' (ตรงกับชื่อฟอนต์ที่ writeFile ไว้ใน VFS)
-  const segFont = 'Noto Sans Thai';
+  
+  const segFont = st.fontFamily || fallbackFontFamily;
   tags.push(`\\fn${segFont}`);
+
   const segSize = st.fontSize || fallbackFontSize;
   if (segSize !== fallbackFontSize) tags.push(`\\fs${segSize}`);
   tags.push(`\\c${hexToAssColor(st.color)}`);

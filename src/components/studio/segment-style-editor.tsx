@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { TextSegment, TextSegmentStyle, FontWeight } from '@/lib/types';
-import { DEFAULT_SEGMENT_STYLE } from '@/lib/types';
+import { DEFAULT_SEGMENT_STYLE, ALL_FONTS } from '@/lib/types';
 
 // ============================================================
 // 🎨 Segment Style Editor Component
@@ -134,6 +134,24 @@ export function SegmentStyleEditor({ segments, onChange }: SegmentStyleEditorPro
             </button>
           ))}
         </div>
+      </div>
+
+      {/* ─── Font Family ──────────────────────────────── */}
+      <div>
+        <label className="text-[10px] text-text-secondary font-medium block mb-1">
+          ฟอนต์
+        </label>
+        <select
+          value={currentStyle.fontFamily || 'Arial'}
+          onChange={(e) => updateStyle({ fontFamily: e.target.value })}
+          className="w-full rounded border border-border px-2 py-1 text-xs bg-white"
+        >
+          {ALL_FONTS.map((font) => (
+            <option key={font.value} value={font.value}>
+              {font.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* ─── Fill (Text Color + Opacity) ──────────────── */}

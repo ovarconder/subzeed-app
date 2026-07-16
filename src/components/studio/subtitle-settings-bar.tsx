@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import { useSubtitleStore } from '@/lib/store/subtitle-store';
 import type { SubscriptionTier } from '@/lib/types';
-import { TIER_CONFIGS } from '@/lib/types';
+import { TIER_CONFIGS, ALL_FONTS } from '@/lib/types';
 import type { AnimationStyle } from './subtitle-overlay';
 
 interface SubtitleSettingsBarProps {
@@ -13,22 +12,6 @@ interface SubtitleSettingsBarProps {
   onFontFamilyChange: (font: string) => void;
   onFontSizeChange: (size: number) => void;
 }
-
-/** ฟอนต์มาตรฐานที่ทุก tier ใช้ได้ (Free รวม Arial) */
-const STANDARD_FONTS = [
-  { value: 'Arial', label: 'Arial (มาตรฐาน)' },
-  { value: 'Kanit', label: 'Kanit' },
-  { value: 'Itim', label: 'Itim' },
-  { value: 'Chonburi', label: 'Chonburi' },
-];
-
-/** ฟอนต์พรีเมียมเฉพาะ Premium+ */
-const PREMIUM_FONTS = [
-  { value: 'Prompt', label: 'Prompt' },
-  { value: 'Sarabun', label: 'Sarabun' },
-  { value: 'Mali', label: 'Mali' },
-  { value: 'Noto Sans Thai', label: 'Noto Sans Thai' },
-];
 
 const FONT_SIZES = [
   { value: 16, label: 'เล็ก' },
@@ -52,15 +35,16 @@ export function SubtitleSettingsBar({
   onFontFamilyChange,
   onFontSizeChange,
 }: SubtitleSettingsBarProps) {
-  const tierConfig = TIER_CONFIGS[tier];
-  const canPremiumFonts = tierConfig.positionAdjust; // Premium+ feature
+  const tierConfig = TIER_CONFIGS[tier] || TIER_CONFIGS.free;
   const canAnimate = tierConfig.textAnimation;
   const store = useSubtitleStore();
 
-  const allFonts = [
-    ...STANDARD_FONTS,
-    ...(canPremiumFonts ? PREMIUM_FONTS : PREMIUM_FONTS.map(f => ({ ...f, locked: true }))),
-  ];
+  // ตรวจสอบว่าฟอนต์ไหนที่ได้รับอนุญาตตามแพ็กเกจ (Arial ได้รับอนุญาตเสมอเป็น fallback ของระบบ)
+  const allowedFonts = tierConfig.fonts || ['Arial'];
+  const allFonts = ALL_FONTS.map(f => ({
+    ...f,
+    locked: f.value !== 'Arial' && !allowedFonts.includes(f.value)
+  }));
 
   return (
     <div className="px-3 py-2 border-b border-border bg-surface/50 flex items-center gap-3 flex-wrap">
@@ -74,8 +58,8 @@ export function SubtitleSettingsBar({
           style={{ fontFamily }}
         >
           {allFonts.map((f) => (
-            <option key={f.value} value={f.value} disabled={(f as any).locked}>
-              {f.label}{(f as any).locked ? ' 🔒' : ''}
+            <option key={f.value} value={f.value} disabled={f.locked}>
+              {f.label}{f.locked ? ' 🔒' : ''}
             </option>
           ))}
         </select>
@@ -129,7 +113,6 @@ export function SubtitleSettingsBar({
           <label className="text-[10px] text-text-secondary font-medium whitespace-nowrap">Animation:</label>
           <select
             className="rounded border border-border px-2 py-1 text-xs bg-white"
-            // Animation style will be stored in a future setting
             defaultValue="fade"
           >
             {ANIMATION_STYLES.map((a) => (

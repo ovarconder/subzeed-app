@@ -109,6 +109,7 @@ export default function StudioPage() {
   const { storeVideo, loadVideo, removeVideo } = useVideoStorage();
   const [subtitleText, setSubtitleText] = useState('');
   const [videoDuration, setVideoDuration] = useState(0);
+  const [videoHeight, setVideoHeight] = useState(0);
   const [brandTerms, setBrandTerms] = useState('');
   const [enableAiVocab, setEnableAiVocab] = useState(false);
   const [enableAiSmart, setEnableAiSmart] = useState(false); // AI แปลภาษา
@@ -160,6 +161,7 @@ export default function StudioPage() {
         return;
       }
       setVideoDuration(dur);
+      setVideoHeight(tempVideo.videoHeight);
 
       // ✅ เก็บวิดีโอลง IndexedDB (local) โดยใช้ projectId ชั่วคราว
       const tempProjectId = `project_${Date.now()}`;
@@ -499,12 +501,15 @@ export default function StudioPage() {
           setExportProgress(0);
         }
 
+        const videoDimensions = await getVideoDimensions(store.videoUrl!)
+        const scaledFontSize = selectedFontSize * (videoDimensions.height / 1080)
+
         const blob = await renderVideoWithSubtitles(
           store.videoUrl,
           store.subtitles,
           {
             fontFamily: selectedFontFamily,
-            fontSize: selectedFontSize,
+            fontSize: scaledFontSize,
             y_offset: 80,
             format: exportFormat,
             position: 'bottom',
@@ -591,6 +596,16 @@ export default function StudioPage() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+  };
+
+  const getVideoDimensions = (videoUrl: string): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.onloadedmetadata = () => {
+        resolve({ width: video.videoWidth, height: video.videoHeight });
+      };
+      video.src = videoUrl;
+    });
   };
 
   // ---- Subtitle CRUD ----

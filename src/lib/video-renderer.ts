@@ -307,7 +307,6 @@ export async function renderVideoWithSubtitles(
     checkAborted();
 
     const ass = buildAss(subtitles, opts);
-    console.log('[DEBUG] Full ASS content:\n', ass);
     console.log('[render] ASS built, length:', ass.length, 'first 200 chars:', ass.slice(0, 200));
     const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
     const assName = 'subs.ass';

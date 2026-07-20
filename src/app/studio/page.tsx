@@ -117,7 +117,10 @@ export default function StudioPage() {
   const [showWatermarkPreview, setShowWatermarkPreview] = useState(false);
 
   // ---- Subtitle Display Settings ----
-  const [selectedFontFamily, setSelectedFontFamily] = useState('Arial');
+  // ⭐ 'Arial' ไม่ใช่ฟอนต์ใน ALL_FONTS (types.ts) จึงไม่เคยถูก pre-load เข้า VFS ของ ffmpeg
+  // เวลา export วิดีโอ ASS จะสั่ง Fontname=Arial ซึ่ง libass หาไฟล์ไม่เจอ → ไม่มีตัวอักษรขึ้นเลย
+  // ต้องใช้ค่า default ที่ตรงกับ font.value ใน ALL_FONTS (types.ts) เท่านั้น
+  const [selectedFontFamily, setSelectedFontFamily] = useState('Arimo');
   const [selectedFontSize, setSelectedFontSize] = useState(20);
 
   // -- Export Video State --

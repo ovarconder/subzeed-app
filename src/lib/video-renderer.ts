@@ -286,7 +286,14 @@ export async function renderVideoWithSubtitles(
     // โหลดฟอนต์ทั้งหมดใน ALL_FONTS เขียนลง VFS ล่วงหน้า
     // เพื่อให้ libass หาฟอนต์เจอเสมอ ไม่ว่าจะเลือกฟอนต์ไหนก็ตาม
     try {
-      await ff.createDir(FONT_VFS_DIR);
+      // ⭐ createDir จะ throw ถ้าโฟลเดอร์มีอยู่แล้ว (เกิดขึ้นแน่นอนตั้งแต่ export รอบ 2
+      // เพราะ ffmpeg instance เป็น singleton ไม่ถูกสร้างใหม่) — ต้อง catch แยกไม่ให้ throw
+      // หลุดไปโดนรวบด้วย catch ใหญ่ด้านล่าง ซึ่งจะทำให้ fontPromises ทั้งก้อนไม่ถูกรันเลย
+      try {
+        await ff.createDir(FONT_VFS_DIR);
+      } catch {
+        // โฟลเดอร์มีอยู่แล้ว ไม่ใช่ปัญหา ไปต่อได้เลย
+      }
       console.log('[render] Pre-loading all available fonts into VFS...');
       const fontPromises = ALL_FONTS.filter(font => font.url).map(async (font) => {
         try {
@@ -368,8 +375,11 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
   if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) args.push('-to', String(opts.trimEnd));
   args.push('-i', inName);
 
-  // บังคับ FFmpeg ให้ใช้ไฟล์ฟอนต์ที่ต้องการโดยตรง เพื่อแก้ปัญหา silent failure
-  args.push('-vf', "subtitles=subs.ass:force_style='FontFile=/fonts/Arimo-Regular.ttf'");
+  // ⭐ 'FontFile' ไม่ใช่ field ที่ libass รู้จักใน force_style (ไม่อยู่ใน V4+ Style spec)
+  // ต้องใช้ option `fontsdir` ของ subtitles filter แทน เพื่อบอกว่าฟอนต์ที่เขียนไว้ใน VFS
+  // (ตอน pre-load ด้านบน) อยู่ที่ไหน — ถ้าไม่มีบรรทัดนี้ libass จะหาฟอนต์ไม่เจอเลยสักตัว
+  // เพราะ core build ของ ffmpeg.wasm ไม่มี fontconfig/ระบบฟอนต์ให้พึ่งพา
+  args.push('-vf', `subtitles=subs.ass:fontsdir=${FONT_VFS_DIR}`);
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel), '-c:a', 'copy', '-movflags', '+faststart', '-y', outName);
   await execWithAbort(ff, args, signal);
 }
@@ -380,8 +390,8 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
   const scale = `scale=${opts.gifMaxWidth}:-1:flags=lanczos`;
   const trimFilter = (opts.trimStart !== undefined || opts.trimEnd !== undefined)
     ? `trim=${opts.trimStart ?? 0}:${opts.trimEnd ?? 9999},setpts=PTS-STARTPTS,` : '';
-  // บังคับ FFmpeg ให้ใช้ไฟล์ฟอนต์ที่ต้องการโดยตรง เพื่อแก้ปัญหา silent failure
-  const subF = "subtitles=subs.ass:force_style='FontFile=/fonts/Arimo-Regular.ttf'";
+  // ⭐ ใช้ fontsdir แทน force_style FontFile (ดูเหตุผลใน renderVideo ด้านบน)
+  const subF = `subtitles=subs.ass:fontsdir=${FONT_VFS_DIR}`;
   try {
     const pa: string[] = [];
     if (opts.trimStart !== undefined && opts.trimStart > 0) pa.push('-ss', String(opts.trimStart));

@@ -318,7 +318,7 @@ export async function renderVideoWithSubtitles(
 
     const ass = buildAss(subtitles, opts);
     console.log('[render] ASS built, length:', ass.length, 'first 200 chars:', ass.slice(0, 200));
-    console.log('--- BEGIN ASS FILE CONTENT ---\n', ass, '\n--- END ASS FILE CONTENT ---');
+
     const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
     const outName = `output.${ext}`;
     await ff.writeFile(inName, await fetchFile(videoData));
@@ -445,20 +445,23 @@ function buildAss(subs: SubtitleEntry[], opts: RenderOptions): string {
   
   const fontName = opts.fontFamily;
 
-  l.push(`Style: bottom,${fontName},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,2,10,10,10,1`);
-  l.push(`Style: top,${fontName},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,10,1`);
-  l.push(`Style: middle,${fontName},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,5,10,10,10,1`);
+  // DEBUG: Force top-left alignment (7) and zero margins
+  l.push(`Style: bottom,${fontName},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,7,0,0,0,1`);
+  l.push(`Style: top,${fontName},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,7,0,0,0,1`);
+  l.push(`Style: middle,${fontName},${opts.fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,7,0,0,0,1`);
   l.push('', '[Events]');
   l.push('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
   subs.forEach((s) => {
     if (s.segments && s.segments.length > 0) {
       const assText = s.segments.map((seg) => segmentToAss(seg, opts.fontFamily, opts.fontSize)).join('');
       const pos = s.position || 'bottom';
-      const marginV = Math.round(((s.y_offset ?? opts.y_offset) / 100) * 360);
+      // DEBUG: Force top-left position by setting MarginV to 0 (style handles alignment)
+      const marginV = 0;
       l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},${pos},,0,0,${marginV},,${assText}`);
     } else {
       const pos = s.position || 'bottom';
-      const marginV = Math.round(((s.y_offset ?? opts.y_offset) / 100) * 360);
+      // DEBUG: Force top-left position by setting MarginV to 0 (style handles alignment)
+      const marginV = 0;
       l.push(`Dialogue: 0,${fmt(s.start)},${fmt(s.end)},${pos},,0,0,${marginV},,${s.text.replace(/\n/g, '\\N')}`);
     }
   });
@@ -470,26 +473,27 @@ function segmentToAss(seg: TextSegment, fallbackFontFamily: string, fallbackFont
   const tags: string[] = [];
   
   const segFont = st.fontFamily || fallbackFontFamily;
-  tags.push(`\\fn${segFont}`);
+  tags.push(`\fn${segFont}`);
 
   const segSize = st.fontSize || fallbackFontSize;
-  if (segSize !== fallbackFontSize) tags.push(`\\fs${segSize}`);
-  tags.push(`\\c${hexToAssColor(st.color)}`);
-  tags.push(`\\alpha&H${Math.round((1 - st.opacity) * 255).toString(16).padStart(2, '0').toUpperCase()}&`);
+  if (segSize !== fallbackFontSize) tags.push(`\fs${segSize}`);
+  tags.push(`\c${hexToAssColor(st.color)}`);
+  // DEBUG: Remove alpha override to rely on style's PrimaryColour alpha.
+  // tags.push(`\alpha&H${Math.round((1 - st.opacity) * 255).toString(16).padStart(2, '0').toUpperCase()}&`);
   const isBold = st.fontWeight === 'bold' || st.fontWeight === 'bold-italic';
   const isItalic = st.fontWeight === 'italic' || st.fontWeight === 'bold-italic';
-  tags.push(`\\b${isBold ? '1' : '0'}`, `\\i${isItalic ? '1' : '0'}`);
+  tags.push(`\b${isBold ? '1' : '0'}`, `\i${isItalic ? '1' : '0'}`);
   const isStrokeActive = st.strokeActive !== undefined ? st.strokeActive : true;
   if (isStrokeActive && st.strokeWidth > 0 && st.strokeOpacity > 0) {
-    tags.push(`\\bord${st.strokeWidth}`, `\\3c${hexToAssColor(st.strokeColor)}`);
-    tags.push(`\\3a&H${Math.round((1 - st.strokeOpacity) * 255).toString(16).padStart(2, '0').toUpperCase()}&`);
-  } else tags.push('\\bord0');
+    tags.push(`\bord${st.strokeWidth}`, `\3c${hexToAssColor(st.strokeColor)}`);
+    tags.push(`\3a&H${Math.round((1 - st.strokeOpacity) * 255).toString(16).padStart(2, '0').toUpperCase()}&`);
+  } else tags.push('\bord0');
   const isShadowActive = st.shadowActive !== undefined ? st.shadowActive : true;
   if (isShadowActive && st.shadowOpacity > 0 && (st.shadowBlur > 0 || st.shadowOffsetX !== 0 || st.shadowOffsetY !== 0)) {
     const shadowDist = Math.max(1, Math.abs(st.shadowOffsetY));
-    tags.push(`\\shad${shadowDist}`, `\\4c${hexToAssColor(st.shadowColor)}`);
-    tags.push(`\\4a&H${Math.round((1 - st.shadowOpacity) * 255).toString(16).padStart(2, '0').toUpperCase()}&`);
-  } else tags.push('\\shad0');
+    tags.push(`\shad${shadowDist}`, `\4c${hexToAssColor(st.shadowColor)}`);
+    tags.push(`\4a&H${Math.round((1 - st.shadowOpacity) * 255).toString(16).padStart(2, '0').toUpperCase()}&`);
+  } else tags.push('\shad0');
   return `{${tags.join('')}}${escapeAssText(seg.text)}`;
 }
 
@@ -500,7 +504,7 @@ function hexToAssColor(hex: string): string {
 }
 
 function escapeAssText(text: string): string {
-  return text.replace(/\n/g, '\\N').replace(/\{/g, '\\{').replace(/\}/g, '\\}').replace(/\|/g, '\\|');
+  return text.replace(/\n/g, '\N').replace(/\{/g, '\{').replace(/\}/g, '\}').replace(/\|/g, '\|');
 }
 
 function fmt(sec: number): string {

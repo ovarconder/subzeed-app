@@ -14,6 +14,7 @@
 // ไม่ใช่ค้างตลอดไป (3) กดยกเลิกระหว่าง render → ต้องเด้ง toast "ยกเลิกการเรนเดอร์แล้ว" ทันที
 // ============================================================
 
+import { api } from '@/lib/api';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import type { SubtitleEntry, TextSegment } from './types';
@@ -292,8 +293,9 @@ export async function renderVideoWithSubtitles(
           const fontFileName = font.url.split('/').pop()!;
           const vfsPath = `${FONT_VFS_DIR}/${fontFileName}`;
           // ไม่ต้องเช็คว่ามีไฟล์อยู่แล้วหรือไม่ writeFile จะเขียนทับไปเลย
-          await ff.writeFile(vfsPath, await fetchFile(font.url));
-          console.log(`[render]  - Font '${font.label}' loaded into ${vfsPath}`);
+          const fontPath = font.url.startsWith('http') ? font.url : api(font.url);
+          await ff.writeFile(vfsPath, await fetchFile(fontPath));
+          console.log(`[render]  - Font '${font.label}' loaded from ${fontPath} into ${vfsPath}`);
         } catch (e) {
           console.warn(`[render]  - Failed to load font '${font.label}':`, e);
         }

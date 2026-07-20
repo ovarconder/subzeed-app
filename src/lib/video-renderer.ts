@@ -240,6 +240,7 @@ export async function renderVideoWithSubtitles(
 ): Promise<Blob> {
   const opts = { ...DEFAULT_RENDER_OPTIONS, ...options };
   const ext = extOf(opts.format);
+  const assName = 'subs.ass';
   if (signal?.aborted) throw new Error('ABORTED');
   const onAbort = () => { terminateFFmpeg(); };
   if (signal) {
@@ -317,8 +318,8 @@ export async function renderVideoWithSubtitles(
 
     const ass = buildAss(subtitles, opts);
     console.log('[render] ASS built, length:', ass.length, 'first 200 chars:', ass.slice(0, 200));
+    console.log('--- BEGIN ASS FILE CONTENT ---\n', ass, '\n--- END ASS FILE CONTENT ---');
     const inName = `input.${ext === 'gif' ? 'mp4' : ext}`;
-    const assName = 'subs.ass';
     const outName = `output.${ext}`;
     await ff.writeFile(inName, await fetchFile(videoData));
     await ff.writeFile(assName, new TextEncoder().encode(ass));

@@ -368,8 +368,8 @@ async function renderVideo(ff: FFmpeg, inName: string, outName: string, opts: Re
   if (opts.trimEnd !== undefined && opts.trimEnd > (opts.trimStart ?? 0)) args.push('-to', String(opts.trimEnd));
   args.push('-i', inName);
 
-  // กำหนดพารามิเตอร์ fontsdir=/fonts เพื่อบังคับให้ libass ค้นหาไฟล์ฟอนต์ภาษาไทยจาก /fonts ใน VFS
-  args.push('-vf', 'subtitles=subs.ass:fontsdir=/fonts');
+  // บังคับ FFmpeg ให้ใช้ไฟล์ฟอนต์ที่ต้องการโดยตรง เพื่อแก้ปัญหา silent failure
+  args.push('-vf', "subtitles=subs.ass:force_style='FontFile=/fonts/Arimo-Regular.ttf'");
   args.push(...codecArgs(opts.format, opts.quality, opts.useHardwareAccel), '-c:a', 'copy', '-movflags', '+faststart', '-y', outName);
   await execWithAbort(ff, args, signal);
 }
@@ -380,8 +380,8 @@ async function renderGif(ff: FFmpeg, inName: string, outName: string, opts: Rend
   const scale = `scale=${opts.gifMaxWidth}:-1:flags=lanczos`;
   const trimFilter = (opts.trimStart !== undefined || opts.trimEnd !== undefined)
     ? `trim=${opts.trimStart ?? 0}:${opts.trimEnd ?? 9999},setpts=PTS-STARTPTS,` : '';
-  // กำหนดพารามิเตอร์ fontsdir=/fonts เพื่อบังคับให้ libass ค้นหาไฟล์ฟอนต์ภาษาไทยจาก /fonts ใน VFS
-  const subF = 'subtitles=subs.ass:fontsdir=/fonts';
+  // บังคับ FFmpeg ให้ใช้ไฟล์ฟอนต์ที่ต้องการโดยตรง เพื่อแก้ปัญหา silent failure
+  const subF = "subtitles=subs.ass:force_style='FontFile=/fonts/Arimo-Regular.ttf'";
   try {
     const pa: string[] = [];
     if (opts.trimStart !== undefined && opts.trimStart > 0) pa.push('-ss', String(opts.trimStart));

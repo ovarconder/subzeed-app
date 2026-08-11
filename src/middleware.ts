@@ -25,6 +25,8 @@ export async function middleware(request: NextRequest) {
     '/review',
     '/_next',
     '/favicon.ico',
+    // 🧪 TEMP: หน้า test spike (ขั้นที่ 5) — ลบออกหลังจบการทดสอบ
+    '/render-test',
   ];
 
   // เอา basePath ออกก่อนเช็ค public routes

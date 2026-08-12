@@ -147,6 +147,21 @@ export async function renderSubtitleVideo(
 
   let dataBuffer: ArrayBuffer | null = null;
 
+  // ⭐ Progress real-time จาก ffmpeg (0..1) → map เป็น % ระหว่าง 32–94
+  //    ทำให้ UI เห็นตัวเลขขยับระหว่าง render แทนที่จะค้างที่ 32%
+  let lastPct = 0;
+  const onProgressEvt = ({ progress }: { progress: number }) => {
+    let p = progress;
+    // progress 0..1; เวลาตัด (trim) ต้อง normalize เป็น 0..1 เอง
+    p = Math.max(0, Math.min(1, p));
+    const pct = Math.round(32 + p * 62); // 32% → 94%
+    if (pct > lastPct && pct < 95) {     // ขยับขึ้นเรื่อย ๆ (ไม่ถอย)
+      lastPct = pct;
+      onProgress?.({ stage: 'exec', percent: pct, message: `กำลังเรนเดอร์ ${Math.round(p * 100)}%` });
+    }
+  };
+  ff.on('progress', onProgressEvt);
+
   try {
     if (output.format === 'gif') {
       const gifCmds = buildGifCommands(inName, ASS_VFS_NAME, FONT_VFS_DIR, outName, commandOutput);
@@ -176,6 +191,7 @@ export async function renderSubtitleVideo(
     }
   } finally {
     ff.off('log', onLog);
+    ff.off('progress', onProgressEvt);
     // 7. Cleanup VFS — ลบไฟล์ชั่วคราวทั้งหมด (อ่านค่าไว้แล้ว)
     await Promise.allSettled([
       ff.deleteFile(inName).catch(() => {}),

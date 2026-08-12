@@ -123,7 +123,13 @@ export async function renderSubtitleVideo(
     trimEnd: config.trimEnd,
   };
 
-  // ฟองตะวิดีโอต้นฉบับซับจาก VFS fontsdir
+  // ── capture stderr ของ ffmpeg/libass เพื่อ debug ────
+  const errLines: string[] = [];
+  const onLog = ({ type, message }: { type: string; message: string }) => {
+    if (type === 'stderr' || type === 'error' || type === 'warn') errLines.push(message.trim());
+  };
+  ff.on('log', onLog);
+
   try {
     if (output.format === 'gif') {
       const gifCmds = buildGifCommands(inName, ASS_VFS_NAME, FONT_VFS_DIR, outName, commandOutput);
@@ -134,7 +140,14 @@ export async function renderSubtitleVideo(
       console.log('[render] ffmpeg args:', args.join(' '));
       await ff.exec(args);
     }
+  } catch (err) {
+    // แนบ stderr ล่าสุดเข้าข้อความ error เพื่อช่วยระบุ root cause
+    const detail = errLines.slice(-8).join(' | ');
+    throw new Error(
+      `FFmpeg render ล้มเหลว${detail ? ` :: ${detail}` : ''} :: ${err instanceof Error ? err.message : String(err)}`,
+    );
   } finally {
+    ff.off('log', onLog);
     // 7. Cleanup VFS — รวม palette ชั่วคราว (ถ้ามี)
     await Promise.allSettled([
       ff.deleteFile(inName).catch(() => {}),

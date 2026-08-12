@@ -1,4 +1,6 @@
 // ============================================================
+
+
 // 🎨 Subtitle Render Module — FFmpeg Loader
 // ============================================================
 // หน้าที่เดียว: คืน instance ของ ffmpeg ที่ init เรียบร้อยแล้ว
@@ -64,7 +66,8 @@ async function loadFFmpegInstance(): Promise<FFmpeg> {
   const instance = new FFmpeg();
 
   instance.on('log', ({ type, message }) => {
-    if (type === 'warn' || type === 'error') console.log('[ffmpeg]', type, message);
+    // log ทุก message เพื่อ debug stderr ของ libass/ffmpeg
+    console.log('[ffmpeg]', type, message);
   });
 
   try {

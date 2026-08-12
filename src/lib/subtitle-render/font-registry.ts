@@ -247,10 +247,10 @@ export function collectFontFiles(
 }
 
 /**
- * คืน VFS path ที่จะใช้ mount ลง root ของ ffmpeg
- * ⚠️ เขียนที่ root `/` โดยตรง เพื่อเลี่ยงปัญหา createDir FS error
- *    (root ของ @ffmpeg VFS มีอยู่เสมอ — ไม่ต้องสร้างโฟลเดอร์)
+ * คืน VFS path ที่จะใช้ mount font ลงโฟลเดอร์ /fonts
+ * ⚠️ fontsdir ต้องชี้ไปเฉพาะโฟลเดอร์ที่มีแต่ .ttf เท่านั้น
+ *    (ไม่ชี้ root `/` เพราะมีไฟล์อื่นปนทำ libass scan error)
  */
 export function fontVfsPath(vfsName: string): string {
-  return `/${vfsName}`;
+  return `/fonts/${vfsName}`;
 }

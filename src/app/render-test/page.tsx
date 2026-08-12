@@ -17,7 +17,7 @@ export default function RenderTestPage() {
   const [subtitleText, setSubtitleText] = useState('สวัสดีครับ ทดสอบซับ');
   const [start, setStart] = useState(0);
   const [end, setEnd] = useState(3);
-  const [fontFamily, setFontFamily] = useState('Arimo');
+  const [fontFamily, setFontFamily] = useState('Kanit');
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState('');
 

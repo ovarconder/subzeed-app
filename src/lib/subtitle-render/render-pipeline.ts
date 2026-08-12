@@ -24,9 +24,9 @@ import { getFFmpeg, terminateFFmpeg } from './ffmpeg-loader';
 import { buildVideoCommand, buildGifCommands } from './ffmpeg-command';
 
 // ─── Config ────────────────────────────────────────────
-// ⚠️ เขียน font ลง root `/` ของ VFS โดยตรง (fontsdir = '/')
-//    เพื่อเลี่ยง createDir FS error กับ singleton instance
-const FONT_VFS_DIR = '/';
+// เขียน font ลง /fonts แล้วชี้ fontsdir=/fonts (มีเฉพาะ .ttf)
+// ไม่ชี้ root '/' เพราะ libass scan เจอไฟล์อื่นปน → FS error
+const FONT_VFS_DIR = '/fonts';
 const ASS_VFS_NAME = 'subs.ass';
 
 // ─── Helper: emit progress ─────────────────────────────
@@ -79,8 +79,14 @@ export async function renderSubtitleVideo(
   const inName = `input.${ext}`;
   const outName = `output.${config.output.format}`;
 
-  // 4a. (ไม่ต้อง createDir — เขียนไฟล์ทั้งหมดลง root `/` ที่มีอยู่แล้ว
-  //     เลี่ยง FS error จาก createDir ซ้ำเมื่อ reuse singleton instance)
+  // 4a. สร้างโฟลเดอร์ /fonts — ตรวจด้วย listDir ก่อน (หลีกเลี่ยง createDir ซ้ำ)
+  //     ⭐ createDir กับ dir ที่มีอยู่แล้ว (reuse singleton) จะ throw
+  //        ErrnoError: FS error → ตรวจก่อนสร้างเฉพาะถ้ายังไม่มี
+  const rootNodes = await ff.listDir('/').catch(() => []);
+  const hasFontsDir = Array.isArray(rootNodes) && rootNodes.some((n) => n.isDir && n.name === 'fonts');
+  if (!hasFontsDir) {
+    await ff.createDir(FONT_VFS_DIR).catch(() => {});
+  }
 
   // 4b. เขียนวิดีโอ input
   const videoData = typeof config.videoSource === 'string'
@@ -91,14 +97,15 @@ export async function renderSubtitleVideo(
   // 4c. เขียน ASS
   await ff.writeFile(ASS_VFS_NAME, new TextEncoder().encode(ass));
 
-  // 4d. เขียนเฉพาะ fonts ที่ job นี้ใช้จริง (ลง root `/` ตรง ๆ)
+  // 4d. เขียนเฉพาะ fonts ที่ job นี้ใช้จริง (ลง /fonts/<name>)
   for (const font of fontFiles) {
     const vfsPath = fontVfsPath(font.vfsName);
     const isRemote = font.source.startsWith('http');
     // ⭐ local font (relative path) ต้อง prefix basePath (/subzeed) ก่อน fetch
     const source = isRemote ? font.source : api(font.source);
     console.log(`[render] Writing font '${font.vfsName}' → ${vfsPath} (${isRemote ? 'remote' : 'local'})`);
-    await ff.writeFile(vfsPath, await fetchFile(source));
+    const fileData = await fetchFile(source);
+    await ff.writeFile(vfsPath, fileData);
   }
   emit(onProgress, 'write-files', 30, 'เขียนไฟล์ครบ');
 

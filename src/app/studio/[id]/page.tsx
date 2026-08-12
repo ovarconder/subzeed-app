@@ -12,8 +12,16 @@ import { SubtitleItem } from '@/components/studio/subtitle-item';
 import { SubtitleSettingsBar } from '@/components/studio/subtitle-settings-bar';
 import { SubtitleCanvasOverlay } from '@/components/studio/subtitle-canvas-overlay';
 import { SegmentStyleEditor } from '@/components/studio/segment-style-editor';
-import { renderVideoWithSubtitles, downloadVideoBlob, EXPORT_FORMATS, QUALITY_PRESETS, supportsHardwareAccel } from '@/lib/video-renderer';
-import type { ExportFormat, QualityPreset } from '@/lib/video-renderer';
+import {
+  renderSubtitleVideo,
+  buildRenderConfig,
+  EXPORT_FORMATS,
+  QUALITY_PRESETS,
+  supportsHardwareAccel,
+  downloadVideoBlob,
+  defaultFontByLocale,
+} from '@/lib/subtitle-render';
+import type { RenderFormat, QualityPreset } from '@/lib/subtitle-render';
 import { loadVideoLocally } from '@/lib/local-video-storage';
 import type { Project, SubtitleEntry, TextSegment } from '@/lib/types';
 import { textToSegments } from '@/lib/types';
@@ -27,11 +35,13 @@ export default function StudioEditPage() {
   const store = useSubtitleStore();
   const [loading, setLoading] = useState(true);
   const [videoReady, setVideoReady] = useState(false);
-  const [selectedFontFamily, setSelectedFontFamily] = useState('Arial');
+  const [selectedFontFamily, setSelectedFontFamily] = useState(
+    () => defaultFontByLocale(typeof navigator !== 'undefined' ? navigator.language : 'en')
+  );
   const [selectedFontSize, setSelectedFontSize] = useState(20);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
-  const [exportFormat, setExportFormat] = useState<ExportFormat>('mp4');
+  const [exportFormat, setExportFormat] = useState<RenderFormat>('mp4');
   const [exportQuality, setExportQuality] = useState<QualityPreset>('high');
   const [useHardwareAccel, setUseHardwareAccel] = useState(supportsHardwareAccel());
   const [gifMaxWidth, setGifMaxWidth] = useState(480);
@@ -107,7 +117,7 @@ export default function StudioEditPage() {
     setIsExporting(true);
     setExportProgress(0);
     try {
-      const blob = await renderVideoWithSubtitles(
+      const config = buildRenderConfig(
         store.videoUrl, store.subtitles,
         {
           fontFamily: selectedFontFamily, fontSize: selectedFontSize, y_offset: 80,
@@ -119,7 +129,10 @@ export default function StudioEditPage() {
           gifFrameSkip: exportFormat === 'gif' ? 1 : 0,
           fps: exportFormat === 'gif' ? 10 : 30,
         },
-        (pct) => setExportProgress(pct),
+      );
+      const blob = await renderSubtitleVideo(
+        config,
+        (evt) => setExportProgress(evt.percent),
       );
       const base = store.videoFile?.name?.replace(/\.[^.]+$/, '') || 'subzeed-video';
       downloadVideoBlob(blob, `${base}-subzeed.${exportFormat}`);
@@ -292,7 +305,7 @@ export default function StudioEditPage() {
                         <label className="text-[10px] text-text-secondary font-medium w-14">Format:</label>
                         <select
                           value={exportFormat}
-                          onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                          onChange={(e) => setExportFormat(e.target.value as RenderFormat)}
                           className="flex-1 rounded border border-border px-2 py-1 text-xs bg-white"
                         >
                           {EXPORT_FORMATS.map((f) => (

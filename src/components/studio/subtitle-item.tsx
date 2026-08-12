@@ -28,7 +28,7 @@ function PreviewText({ segments, displayStyle, fontFamily, fontSize }: {
   const ds = displayStyle ?? DEFAULT_DISPLAY_STYLE;
   const showBg = ds.bgActive && ds.bgOpacity > 0;
   const showShadow = ds.boxShadow.active && ds.boxShadow.opacity > 0;
-  const ff = fontFamily || 'Arial';
+  const ff = fontFamily || 'Kanit';
   const fs = fontSize || 20;
 
   return (

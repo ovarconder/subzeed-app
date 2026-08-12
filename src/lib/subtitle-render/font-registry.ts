@@ -158,6 +158,20 @@ export function getFontEntry(value: string): FontRegistryEntry | undefined {
 }
 
 /**
+ * คืนฟอนต์ default ตามภาษา (pure — รับ lang มาจาก caller)
+ * - ภาษาไทย (th / th-TH...) → 'Kanit' (รองรับไทยชัดเจน)
+ * - อย่างอื่น (en ฯลฯ)      → 'Roboto' (ฟอนต์สากล มีใน registry)
+ *
+ * ทั้ง Kanit และ Roboto อยู่ใน FONT_REGISTRY + ALL_FONTS → libass พิมพ์ได้แน่นอน
+ * (ไม่ได้ใช้ 'Arial' เพราะไม่มีไฟล์จริงใน registry → พิมพ์ไม่ออก)
+ */
+export function defaultFontByLocale(lang?: string): string {
+  const l = (lang || '').toLowerCase();
+  if (l.startsWith('th')) return 'Kanit';
+  return 'Roboto';
+}
+
+/**
  * แปลงชื่อ font ที่ UI ให้ → ชื่อ family ที่ libass ต้องใช้
  * ถ้าไม่เจอ → คืนค่าเดิม (fallback default)
  */

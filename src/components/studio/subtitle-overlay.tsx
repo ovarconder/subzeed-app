@@ -44,7 +44,7 @@ export function SubtitleOverlay({
       <AnimatedText
         text={subtitle.text}
         animation={actualAnimation}
-        fontFamily={fontFamily || tierConfig.fonts[0] || 'Arial'}
+        fontFamily={fontFamily || tierConfig.fonts[0] || 'Kanit'}
         fontSize={fontSize}
         isActive={currentTime >= subtitle.start && currentTime <= subtitle.end}
       />

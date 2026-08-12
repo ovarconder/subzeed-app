@@ -106,6 +106,8 @@ export interface SubtitleCue {
   position?: SubtitlePosition;
   /** Y-offset เฉพาะบรรทัด (ถ้าไม่ระบุ ใช้ของ global) */
   y_offset?: number;
+  /** Box / background style เฉพาะบรรทัด (ถ้าไม่ระบุ ใช้ของ global `style.box`) */
+  displayStyle?: SubtitleBoxStyle;
 }
 
 // ─── Segment ย่อยในบรรทัดหนึ่ง (หลายสี/สไตล์ในบรรทัดเดียว) ─

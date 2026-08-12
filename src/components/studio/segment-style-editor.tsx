@@ -142,7 +142,7 @@ export function SegmentStyleEditor({ segments, onChange }: SegmentStyleEditorPro
           ฟอนต์
         </label>
         <select
-          value={currentStyle.fontFamily || 'Arial'}
+          value={currentStyle.fontFamily || 'Kanit'}
           onChange={(e) => updateStyle({ fontFamily: e.target.value })}
           className="w-full rounded border border-border px-2 py-1 text-xs bg-white"
         >

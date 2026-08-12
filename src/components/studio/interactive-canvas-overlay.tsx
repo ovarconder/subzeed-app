@@ -303,15 +303,15 @@ function InlineSubtitleEditor({
           <div>
             <label className="block text-[10px] text-text-secondary mb-0.5">ฟอนต์</label>
             <select
-              value={activeSeg?.style.fontFamily || 'Arial'}
+              value={activeSeg?.style.fontFamily || 'Kanit'}
               onChange={(e) => updateSegmentStyle(activeSegIdx, { fontFamily: e.target.value })}
               className="w-full rounded border border-border px-1 py-1 text-[10px] bg-white"
             >
               {(() => {
                 const tierConfig = TIER_CONFIGS[tier] || TIER_CONFIGS.free;
-                const allowedFonts = tierConfig.fonts || ['Arial'];
+                const allowedFonts = tierConfig.fonts || ['Kanit'];
                 return ALL_FONTS.map(f => {
-                  const isLocked = f.value !== 'Arial' && !allowedFonts.includes(f.value);
+                  const isLocked = f.value !== 'Kanit' && !allowedFonts.includes(f.value);
                   return (
                     <option key={f.value} value={f.value} disabled={isLocked}>
                       {f.label}{isLocked ? ' 🔒' : ''}

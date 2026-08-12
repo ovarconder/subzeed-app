@@ -42,13 +42,62 @@ function emit(
 }
 
 /**
+ * รัน ff.exec() ให้ยกเลิกได้จริงเมื่อ abort signal ถูกสั่ง
+ *
+ * @param run      closure ที่เรียก ff.exec(...) ของงานนั้น
+ * @param signal   AbortSignal — ถ้ามีและ abort → terminate instance + reset singleton + throw ABORTED
+ * @param onKill   callback ใช้ reset global ffmpeg singleton (เรียกที่ import จาก loader)
+ */
+async function execWithAbort(
+  run: () => Promise<void>,
+  signal: AbortSignal | undefined,
+  onKill: () => void,
+): Promise<void> {
+  if (signal?.aborted) throw new Error('ABORTED');
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      // ยุติ instance + reset singleton → ครั้งต่อไปจะ load ใหม่
+      onKill();
+      reject(new Error('ABORTED'));
+    };
+    if (signal?.aborted) { onAbort(); return; }
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    run()
+      .then(() => { if (!settled) { settled = true; resolve(); } })
+      .catch((err) => {
+        if (!settled) {
+          settled = true;
+          reject((err?.message === 'ABORTED' || signal?.aborted) ? new Error('ABORTED') : err);
+        }
+      })
+      .finally(() => { signal?.removeEventListener('abort', onAbort); });
+  });
+}
+
+/**
  * เรนเดอร์วิดีโอฝังซับ → คืน as Blob
+ *
+ * @param config     config ของงาน render
+ * @param onProgress callback รับ progress
+ * @param signal     (optional) AbortSignal — ใช้ยกเลิกการ render
  */
 export async function renderSubtitleVideo(
   config: RenderJobConfig,
   onProgress?: ProgressFn,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   const { style, cues, output } = config;
+
+  // helper: ออกทันทีถ้าถูก abort
+  const checkAborted = () => {
+    if (signal?.aborted) throw new Error('ABORTED');
+  };
+  checkAborted();
 
   // ─── 1. Validate + เตรียม font ──────────────────────
   emit(onProgress, 'validate-fonts', 2, 'กำลังตรวจสอบฟอนต์...');
@@ -163,22 +212,31 @@ export async function renderSubtitleVideo(
   ff.on('progress', onProgressEvt);
 
   try {
+    const runExec = (args: string[]) =>
+      execWithAbort(async () => { await ff.exec(args); }, signal, terminateFFmpeg);
+
     if (output.format === 'gif') {
       const gifCmds = buildGifCommands(inName, ASS_VFS_NAME, FONT_VFS_DIR, outName, commandOutput);
-      await ff.exec(gifCmds.palette);
-      await ff.exec(gifCmds.gif);
+      await runExec(gifCmds.palette);
+      await runExec(gifCmds.gif);
     } else {
       const args = buildVideoCommand(inName, ASS_VFS_NAME, FONT_VFS_DIR, outName, commandOutput);
       console.log('[render] ffmpeg args:', args.join(' '));
-      await ff.exec(args);
+      await runExec(args);
     }
     emit(onProgress, 'read-output', 95, 'กำลังอ่านผลลัพธ์...');
     dataBuffer = await readBytes();
   } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+
+    // ⭐ ผู้ใช้ยกเลิก → ออกทันทีเป็น ABORTED (ยังไม่ต้องอ่าน output)
+    if (raw === 'ABORTED' || signal?.aborted) {
+      throw new Error('ABORTED');
+    }
+
     // ⭐ ffmpeg.wasm บางทีจบงานแล้วแต่ throw 'Aborted()' ระหว่าง cleanup
     //    (stderr แสดง encode+mux เสร็จ Lsize=...) → ลองอ่าน output ถ้ามีไฟล์จริงให้ใช้ต่อ
     const detail = errLines.slice(-8).join(' | ');
-    const raw = err instanceof Error ? err.message : String(err);
     const hasOutput = await ff.readFile(outName).then(() => true).catch(() => false);
     if (hasOutput) {
       console.warn('[render] FFmpeg abort หลังเสร็จ แต่ output มีอยู่ — ใช้ต่อ');

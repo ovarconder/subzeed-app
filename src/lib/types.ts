@@ -27,7 +27,7 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     quotaMinutes: 20,
     maxVideoMinutes: 3,
     watermark: true,
-    fonts: ['Arimo'],
+    fonts: ['Kanit'],
     aiVocabulary: false,
     positionAdjust: false,
     textAnimation: false,

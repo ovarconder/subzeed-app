@@ -15,6 +15,7 @@ import type {
   SubtitleCue,
   SubtitleCueSegment,
   SubtitlePosition,
+  SubtitleBoxStyle,
   FontWeight,
 } from './types';
 
@@ -146,6 +147,11 @@ export function buildStyleLine(style: AssStyle): string {
 // ─── Full ASS Builder ──────────────────────────────────
 /**
  * ฟังก์ชันหลัก: สร้าง .ass string ทั้งหมดจาก style + cues
+ *
+ * สร้าง style rows ต่อตำแหน่ง (bottom/top/middle) จาก global box
+ * แล้วสำหรับ cue ที่มีตำแหน่ง/box/ย่อหน้าที่ต่างจาก global
+ * จะสร้าง style row เฉพาะ (ชื่อ unique) เพื่อให้แต่ละบรรทัด
+ * แสดงผลแบบที่ UI ตั้งไว้ได้ครบ
  */
 export function buildAss(style: SubtitleStyleParams, cues: SubtitleCue[]): string {
   const l: string[] = [];
@@ -153,19 +159,90 @@ export function buildAss(style: SubtitleStyleParams, cues: SubtitleCue[]): strin
   l.push('[V4+ Styles]');
   l.push(ASS_STYLE_LINE_FORMAT);
 
-  // สร้าง Style ต่อตำแหน่ง (bottom/top/middle)
-  // marginV ใช้ย้ายความสูงตาม y_offset (%)
-  const styleRows = buildPositionStyles(style);
-  styleRows.forEach((r) => l.push(r));
+  // Style row ฐานตามตำแหน่ง (จาก global box) — สำหรับบรรทัดที่ไม่ override
+  const baseKeys = baseStyleKeys(style);
+  const styleRows: string[] = [];
+
+  // เก็บ mapping cue → ชื่อ style row ที่จะใช้ (เพื่อ override box/position per line)
+  const cueStyleName = new Map<number, string>();
+
+  // วินาทีแรก: สร้าง style rows สำหรับ global ทั้ง 3 ตำแหน่ง
+  buildPositionStyles(style).forEach((r) => styleRows.push(r));
+
+  // จากนั้น: ตรวจว่า cue ไหนมี box/ตำแหน่งเฉพาะ → สร้าง style row เดิมเพิ่ม (ต่างจาก global)
+  cues.forEach((cue, i) => {
+    const pos = cue.position || style.position || 'bottom';
+    const deviatesFromBase = JSON.stringify(cue.displayStyle ?? null) !== JSON.stringify(style.box ?? null);
+    if (deviatesFromBase) {
+      // สร้าง style row เฉพาะของบรรทัดนี้ (ใช้ box ของบรรทัดแทน global)
+      const name = `d${i}_${pos}`;
+      styleRows.push(buildPerLineStyle(name, style, cue.displayStyle, pos));
+      cueStyleName.set(i, name);
+    }
+  });
+
+  // เก็บเฉพาะ style rows ที่ unique (กันซ้ำ)
+  const seen = new Set<string>();
+  styleRows.forEach((r) => { if (!seen.has(r)) { seen.add(r); l.push(r); } });
   l.push('');
 
   l.push('[Events]');
   l.push('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
-  cues.forEach((cue) => {
-    l.push(buildDialogue(cue, style));
+  cues.forEach((cue, i) => {
+    const styleName = cueStyleName.get(i) || cue.position || style.position || 'bottom';
+    l.push(buildDialogue(cue, style, styleName, style));
   });
 
   return l.join('\n');
+}
+
+/**
+ * key รวมของ box ที่ทำให้ global styles ทั้ง 3 ต่างกันน้อยหรือไม่
+ */
+function baseStyleKeys(style: SubtitleStyleParams): string {
+  return JSON.stringify({ box: style.box, seg: style.defaultSegmentStyle });
+}
+
+/**
+ * สร้าง style row เฉพาะเส้น โดยใช้ box ของเส้น (displayStyle) — ตำแหน่งนี้
+ */
+function buildPerLineStyle(
+  name: string,
+  style: SubtitleStyleParams,
+  displayStyle: SubtitleBoxStyle | undefined,
+  pos: SubtitlePosition,
+): string {
+  const box = displayStyle;
+  const seg = style.defaultSegmentStyle;
+
+  const useBox = box && box.bgActive !== false && box.bgOpacity > 0;
+  const borderStyle: 1 | 3 = useBox ? 3 : 1;
+  const outlineWidth = useBox ? 0 : seg && seg.strokeActive !== false && seg.strokeWidth ? seg.strokeWidth : 0;
+  const shadowDist = useBox ? 0 : seg && seg.shadowActive !== false && seg.shadowOffsetY ? Math.abs(seg.shadowOffsetY) : 0;
+  const padL = useBox ? Math.round(box.paddingX ?? 12) : 0;
+  const padR = useBox ? Math.round(box.paddingX ?? 12) : 0;
+  const padV = useBox ? Math.round(box.paddingY ?? 6) : 0;
+
+  return buildStyleLine({
+    name,
+    fontName: style.fontFamily,
+    fontSize: style.fontSize ?? 24,
+    primary: seg?.color ? colorWithOpacityToAss(seg.color, seg.opacity ?? 1) : '&H00FFFFFF&',
+    secondary: '&H000000FF&',
+    outline: seg?.strokeColor ? colorWithOpacityToAss(seg.strokeColor, seg.strokeOpacity ?? 1) : '&H00000000&',
+    back: box?.bgColor && box.bgActive !== false
+      ? colorWithOpacityToAss(box.bgColor, box.bgOpacity ?? 0.6)
+      : '&H80000000&',
+    bold: seg && (seg.fontWeight === 'bold' || seg.fontWeight === 'bold-italic') ? 1 : 0,
+    italic: seg && (seg.fontWeight === 'italic' || seg.fontWeight === 'bold-italic') ? 1 : 0,
+    borderStyle,
+    outlineWidth,
+    shadowDist,
+    marginL: padL,
+    marginR: padR,
+    alignment: ALIGNMENT_BY_POSITION[pos],
+    marginV: posVOffset(pos, style.y_offset ?? 0, padV),
+  });
 }
 
 /**
@@ -256,8 +333,18 @@ function posVOffset(pos: SubtitlePosition, yOffsetPct: number, padV: number): nu
 /**
  * แปลง 1 cue → Dialogue: line
  * รองรับทั้งข้อความ plain (text) และ segment (หลายสไตล์)
+ *
+ * @param cue             แถว cue
+ * @param style           global style
+ * @param styleName       ชื่อ style row ที่จะใช้ (อาจเป็น style line เฉพาะ)
+ * @param globalStyle     ใช้คำนวณ marginV หาจาก global box + y_offset base
  */
-export function buildDialogue(cue: SubtitleCue, style: SubtitleStyleParams): string {
+export function buildDialogue(
+  cue: SubtitleCue,
+  style: SubtitleStyleParams,
+  styleName: string = cue.position || 'bottom',
+  globalStyle: SubtitleStyleParams = style,
+): string {
   const start = formatAssTime(cue.start);
   const end = formatAssTime(cue.end);
   const pos = cue.position || style.position || 'bottom';
@@ -269,11 +356,15 @@ export function buildDialogue(cue: SubtitleCue, style: SubtitleStyleParams): str
     text = escapeAssText(cue.text || '');
   }
 
-  // MarginV ที่จุด Dialogue — ถ้าต้องการ override ทีละบรรทัด (y_offset ของ cue)
-  // หาก cue มี y_offset ต่างจาก global ให้ใส่ marginV ที่นี่
-  const marginV = 0; // base — ใช้ marginV จาก style row เป็นหลัก
+  // marginV ของ dialogue — ใช้ y_offset ของ cue เป็นหลัก (override global)
+  // Padding ประมาณจาก global box (well enough) — marginV = y_offset% → px
+  const yPct = cue.y_offset ?? globalStyle.y_offset ?? 0;
+  const useBox = (cue.displayStyle ?? globalStyle.box)?.bgActive !== false;
+  const padV = useBox ? Math.round((cue.displayStyle ?? globalStyle.box)?.paddingY ?? 0) : 0;
+  const marginV = posVOffset(pos, yPct, padV);
 
-  return `Dialogue: 0,${start},${end},${pos},,0,0,${marginV},,${text}`;
+  // ใช้ marginL/R ปกติจาก style row (0) — marginV ได้จากนี้
+  return `Dialogue: 0,${start},${end},${styleName},,0,0,${marginV},,${text}`;
 }
 
 /**

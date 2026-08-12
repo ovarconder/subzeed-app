@@ -7,8 +7,17 @@ import { Button } from '@/components/ui/button';
 import { SubtitleItem } from '@/components/studio/subtitle-item';
 import { SubtitleSettingsBar } from '@/components/studio/subtitle-settings-bar';
 import { InteractiveCanvasOverlay } from '@/components/studio/interactive-canvas-overlay';
-import { renderVideoWithSubtitles, downloadVideoBlob, EXPORT_FORMATS, QUALITY_PRESETS, supportsHardwareAccel, terminateFFmpeg } from '@/lib/video-renderer';
-import type { ExportFormat, QualityPreset } from '@/lib/video-renderer';
+import {
+  renderSubtitleVideo,
+  buildRenderConfig,
+  EXPORT_FORMATS,
+  QUALITY_PRESETS,
+  supportsHardwareAccel,
+  downloadVideoBlob,
+  terminateFFmpeg,
+  defaultFontByLocale,
+} from '@/lib/subtitle-render';
+import type { RenderFormat, QualityPreset } from '@/lib/subtitle-render';
 import { createClient } from '@/lib/supabase/client';
 import { useVideoStorage } from '@/lib/hooks/use-video-storage';
 import { useAuth } from '@/components/auth/auth-provider';
@@ -117,10 +126,11 @@ export default function StudioPage() {
   const [showWatermarkPreview, setShowWatermarkPreview] = useState(false);
 
   // ---- Subtitle Display Settings ----
-  // ⭐ 'Arial' ไม่ใช่ฟอนต์ใน ALL_FONTS (types.ts) จึงไม่เคยถูก pre-load เข้า VFS ของ ffmpeg
-  // เวลา export วิดีโอ ASS จะสั่ง Fontname=Arial ซึ่ง libass หาไฟล์ไม่เจอ → ไม่มีตัวอักษรขึ้นเลย
-  // ต้องใช้ค่า default ที่ตรงกับ font.value ใน ALL_FONTS (types.ts) เท่านั้น
-  const [selectedFontFamily, setSelectedFontFamily] = useState('Arimo');
+  // ⭐ ใช้ฟอนต์ที่มีไฟล์จริงใน FONT_REGISTRY เท่านั้น
+  //    ไทย → Kanit / อื่นๆ → Roboto (ตามค่า locale ของเบราว์เซอร์)
+  const [selectedFontFamily, setSelectedFontFamily] = useState(
+    () => defaultFontByLocale(typeof navigator !== 'undefined' ? navigator.language : 'en')
+  );
   const [selectedFontSize, setSelectedFontSize] = useState(20);
 
   // -- Export Video State --
@@ -129,7 +139,7 @@ export default function StudioPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const exportingRef = useRef(false); // sync state สำหรับ callback
   exportingRef.current = isExporting;
-  const [exportFormat, setExportFormat] = useState<ExportFormat>('mp4');
+  const [exportFormat, setExportFormat] = useState<RenderFormat>('mp4');
   const [exportQuality, setExportQuality] = useState<QualityPreset>('high');
   const [useHardwareAccel, setUseHardwareAccel] = useState(supportsHardwareAccel());
   const [gifMaxWidth, setGifMaxWidth] = useState(480);
@@ -507,7 +517,7 @@ export default function StudioPage() {
         const videoDimensions = await getVideoDimensions(store.videoUrl!)
         const scaledFontSize = selectedFontSize * (videoDimensions.height / 1080)
 
-        const blob = await renderVideoWithSubtitles(
+        const config = buildRenderConfig(
           store.videoUrl,
           store.subtitles,
           {
@@ -522,7 +532,11 @@ export default function StudioPage() {
             gifFrameSkip: exportFormat === 'gif' ? 1 : 0,
             fps: exportFormat === 'gif' ? 10 : 30,
           },
-          (pct) => setExportProgress(pct),
+        );
+
+        const blob = await renderSubtitleVideo(
+          config,
+          (evt) => setExportProgress(evt.percent),
           ac.signal, // ✅ ส่ง abort signal
         );
 
@@ -949,7 +963,7 @@ export default function StudioPage() {
                         <label className="text-[10px] text-text-secondary font-medium w-14">Format:</label>
                         <select
                           value={exportFormat}
-                          onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                          onChange={(e) => setExportFormat(e.target.value as RenderFormat)}
                           className="flex-1 rounded border border-border px-2 py-1 text-xs bg-white"
                         >
                           {EXPORT_FORMATS.map((f) => (

@@ -39,11 +39,11 @@ export function SubtitleSettingsBar({
   const canAnimate = tierConfig.textAnimation;
   const store = useSubtitleStore();
 
-  // ตรวจสอบว่าฟอนต์ไหนที่ได้รับอนุญาตตามแพ็กเกจ (Arial ได้รับอนุญาตเสมอเป็น fallback ของระบบ)
-  const allowedFonts = tierConfig.fonts || ['Arial'];
+  // ตรวจสอบว่าฟอนต์ไหนที่ได้รับอนุญาตตามแพ็กเกจ (Kanit ได้รับอนุญาตเสมอเป็น fallback ของระบบ)
+  const allowedFonts = tierConfig.fonts || ['Kanit'];
   const allFonts = ALL_FONTS.map(f => ({
     ...f,
-    locked: f.value !== 'Arial' && !allowedFonts.includes(f.value)
+    locked: f.value !== 'Kanit' && !allowedFonts.includes(f.value)
   }));
 
   return (

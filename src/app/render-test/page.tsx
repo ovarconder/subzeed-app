@@ -8,8 +8,8 @@
 // ============================================================
 
 import { useRef, useState } from 'react';
-import { renderSubtitleVideo } from '@/lib/subtitle-render/render-pipeline';
-import type { RenderJobConfig } from '@/lib/subtitle-render/types';
+import { renderSubtitleVideo } from '@/lib/subtitle-render';
+import type { RenderJobConfig } from '@/lib/subtitle-render';
 
 export default function RenderTestPage() {
   const fileRef = useRef<HTMLInputElement>(null);

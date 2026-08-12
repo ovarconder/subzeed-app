@@ -36,10 +36,17 @@ export async function middleware(request: NextRequest) {
     (route) => relativePath === route || relativePath.startsWith(route + '/')
   );
 
-    // Static files that should bypass auth check
-  const staticFiles: string[] = [];
+  // Static files that should bypass auth check
+  // ⭐ /fonts/*, /ffmpeg/* เป็น asset จำเป็นที่ client ต้อง fetch เองแบบไม่มี session
+  //    (font ต้อง mount เข้า VFS ตอน render) → ต้องปล่อยผ่าน
+  const staticFiles: string[] = [
+    '/fonts',
+    '/ffmpeg',
+  ];
+  const isStaticAsset = staticFiles.some((p) => relativePath.startsWith(`${p}/`) || relativePath === p);
+  const isFileWithExt = /\.(ttf|woff2?|eot|wasm|js|css|map|svg|png|jpe?g|gif|webp|ico|mp4|webm|mov)$/i.test(relativePath);
 
-  if (isPublicRoute || relativePath === '/' || staticFiles.includes(relativePath)) {
+  if (isPublicRoute || relativePath === '/' || isStaticAsset || isFileWithExt) {
     return NextResponse.next();
   }
 

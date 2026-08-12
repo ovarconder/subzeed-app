@@ -132,13 +132,18 @@ export default function RenderTestPage() {
         <div>
           <label className="block text-sm font-medium mb-1">ฟอนต์</label>
           <select value={fontFamily} onChange={(e) => setFontFamily(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
-            <option value="Arimo">Arimo</option>
             <option value="Kanit">Kanit</option>
             <option value="Itim">Itim</option>
             <option value="Prompt">Prompt</option>
             <option value="Sarabun">Sarabun</option>
             <option value="Mali">Mali</option>
             <option value="Noto Sans Thai">Noto Sans Thai</option>
+            <option value="Roboto">Roboto</option>
+            <option value="Open Sans">Open Sans</option>
+            <option value="Inter">Inter</option>
+            <option value="Oswald">Oswald</option>
+            <option value="Poppins">Poppins</option>
+            <option value="Lato">Lato</option>
           </select>
         </div>
 

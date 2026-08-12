@@ -31,78 +31,126 @@ export interface FontRegistryEntry {
 }
 
 // ─── Registry หลัก ─────────────────────────────────────
-// ⭐ ต้องตรงกับ ALL_FONTS ใน src/lib/types.ts
-// แต่เพิ่ม field family (ชื่อจริงภายใน TTF) และ vfsName
+// ✅ ทุกฟอนต์ self-host ใน public/fonts/ (isRemote: false)
+// ⭐ family ต้องตรงกับชื่อ family ภายใน TTF จริง เป๊ะ
+//    (ตรวจจากไฟล์ TTF ที่ได้จาก google/fonts)
 //
-// หมายเหตุ: ชื่อ family ของ TTF แต่ละตัวอาจต่างจากชื่อ UI
-// เช่น 'Arimo' ครอบคลุม Arimo-Regular.ttf
-// ต้องแก้ให้ตรงกับ family ภายในไฟล์จริงตอนจบ เมื่อเรา verify กับ myfont/FC
+// หมายเหตุ: Arimo มีเฉพาะ placeholder เสียใน public/fonts (ไม่ใช่ TTF จริง)
+// ดังนั้นจึงไม่รวม Arimo ไว้ — ใช้ Kanit เป็นฟอนต์หลัก default แทน
 export const FONT_REGISTRY: FontRegistryEntry[] = [
-  {
-    value: 'Arimo',
-    label: 'Arial (มาตรฐาน)',
-    family: 'Arimo',
-    file: '/fonts/Arimo-Regular.ttf',
-    isRemote: false,
-    vfsName: 'Arimo-Regular.ttf',
-  },
   {
     value: 'Kanit',
     label: 'Kanit',
     family: 'Kanit',
-    file: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/kanit/Kanit-Regular.ttf',
-    isRemote: true,
+    file: '/fonts/Kanit-Regular.ttf',
+    isRemote: false,
     vfsName: 'Kanit-Regular.ttf',
   },
   {
     value: 'Itim',
     label: 'Itim',
     family: 'Itim',
-    file: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/itim/Itim-Regular.ttf',
-    isRemote: true,
+    file: '/fonts/Itim-Regular.ttf',
+    isRemote: false,
     vfsName: 'Itim-Regular.ttf',
   },
   {
     value: 'Chonburi',
     label: 'Chonburi',
     family: 'Chonburi',
-    file: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/chonburi/Chonburi-Regular.ttf',
-    isRemote: true,
+    file: '/fonts/Chonburi-Regular.ttf',
+    isRemote: false,
     vfsName: 'Chonburi-Regular.ttf',
   },
   {
     value: 'Prompt',
     label: 'Prompt',
     family: 'Prompt',
-    file: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/prompt/Prompt-Regular.ttf',
-    isRemote: true,
+    file: '/fonts/Prompt-Regular.ttf',
+    isRemote: false,
     vfsName: 'Prompt-Regular.ttf',
   },
   {
     value: 'Sarabun',
     label: 'Sarabun',
     family: 'Sarabun',
-    file: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sarabun/Sarabun-Regular.ttf',
-    isRemote: true,
+    file: '/fonts/Sarabun-Regular.ttf',
+    isRemote: false,
     vfsName: 'Sarabun-Regular.ttf',
   },
   {
     value: 'Mali',
     label: 'Mali',
     family: 'Mali',
-    file: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/mali/Mali-Regular.ttf',
-    isRemote: true,
+    file: '/fonts/Mali-Regular.ttf',
+    isRemote: false,
     vfsName: 'Mali-Regular.ttf',
   },
   {
     value: 'Noto Sans Thai',
     label: 'Noto Sans Thai',
     family: 'Noto Sans Thai',
-    file: 'https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansThai/NotoSansThai-Regular.ttf',
-    isRemote: true,
+    file: '/fonts/NotoSansThai-Regular.ttf',
+    isRemote: false,
     vfsName: 'NotoSansThai-Regular.ttf',
   },
+  // ── ฟอนต์สากล (Latin) สำหรับขายต่างประเทศ ──
+  {
+    value: 'Roboto',
+    label: 'Roboto',
+    family: 'Roboto',
+    file: '/fonts/Roboto-Regular.ttf',
+    isRemote: false,
+    vfsName: 'Roboto-Regular.ttf',
+  },
+  {
+    value: 'Open Sans',
+    label: 'Open Sans',
+    family: 'Open Sans',
+    file: '/fonts/OpenSans-Regular.ttf',
+    isRemote: false,
+    vfsName: 'OpenSans-Regular.ttf',
+  },
+  {
+    value: 'Inter',
+    label: 'Inter',
+    family: 'Inter',
+    file: '/fonts/Inter-Regular.ttf',
+    isRemote: false,
+    vfsName: 'Inter-Regular.ttf',
+  },
+  {
+    value: 'Oswald',
+    label: 'Oswald',
+    family: 'Oswald',
+    file: '/fonts/Oswald-Regular.ttf',
+    isRemote: false,
+    vfsName: 'Oswald-Regular.ttf',
+  },
+  {
+    value: 'Poppins',
+    label: 'Poppins',
+    family: 'Poppins',
+    file: '/fonts/Poppins-Regular.ttf',
+    isRemote: false,
+    vfsName: 'Poppins-Regular.ttf',
+  },
+  {
+    value: 'Lato',
+    label: 'Lato',
+    family: 'Lato',
+    file: '/fonts/Lato-Regular.ttf',
+    isRemote: false,
+    vfsName: 'Lato-Regular.ttf',
+  },
 ];
+
+// ─── Default Font ──────────────────────────────────────
+/**
+ * ฟอนต์หลัก default ของแอป
+ * (ใช้ Kanit เพราะ Arimo placeholder เสียจริง ๆ)
+ */
+export const DEFAULT_FONT = 'Kanit';
 
 // ─── Lookup Helpers ────────────────────────────────────
 export function getFontEntry(value: string): FontRegistryEntry | undefined {
@@ -151,14 +199,6 @@ export function validateFonts(
       };
       issues?.(issue);
       problems.push(value);
-      return;
-    }
-
-    // local font ต้องมีไฟล์ใน public/fonts — node side ตรวจได้ง่าย
-    if (!entry.isRemote && entry.file.startsWith('/fonts/')) {
-      // ยังไม่ตรวจ physical file ที่นี่ (ไม่มี fs ใน browser)
-      // แต่ไฟล์ชื่อ "Arimo-Regular.ttf" เป็นค่าเริ่มต้นที่รู้ว่ามีในโปรเจกต์นี้
-      void 0;
     }
   });
 

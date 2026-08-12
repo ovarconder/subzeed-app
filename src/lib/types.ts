@@ -404,12 +404,20 @@ export interface FontConfig {
 }
 
 export const ALL_FONTS: FontConfig[] = [
-  { value: 'Arimo', label: 'Arial (มาตรฐาน)', url: '/fonts/Arimo-Regular.ttf' },
-  { value: 'Kanit', label: 'Kanit', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/kanit/Kanit-Regular.ttf' },
-  { value: 'Itim', label: 'Itim', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/itim/Itim-Regular.ttf' },
-  { value: 'Chonburi', label: 'Chonburi', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/chonburi/Chonburi-Regular.ttf' },
-  { value: 'Prompt', label: 'Prompt', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/prompt/Prompt-Regular.ttf' },
-  { value: 'Sarabun', label: 'Sarabun', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sarabun/Sarabun-Regular.ttf' },
-  { value: 'Mali', label: 'Mali', url: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/mali/Mali-Regular.ttf' },
-  { value: 'Noto Sans Thai', label: 'Noto Sans Thai', url: 'https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSansThai/NotoSansThai-Regular.ttf' },
+  // ✅ self-host ใน public/fonts/ ทุกตัว (เทียบกับ FONT_REGISTRY ใน subtitle-render)
+  // (Arimo ถูกเอาออกเพราะไฟล์ใน public/fonts เป็น placeholder เสีย ไม่ใช่ TTF จริง)
+  { value: 'Kanit', label: 'Kanit', url: '/fonts/Kanit-Regular.ttf' },
+  { value: 'Itim', label: 'Itim', url: '/fonts/Itim-Regular.ttf' },
+  { value: 'Chonburi', label: 'Chonburi', url: '/fonts/Chonburi-Regular.ttf' },
+  { value: 'Prompt', label: 'Prompt', url: '/fonts/Prompt-Regular.ttf' },
+  { value: 'Sarabun', label: 'Sarabun', url: '/fonts/Sarabun-Regular.ttf' },
+  { value: 'Mali', label: 'Mali', url: '/fonts/Mali-Regular.ttf' },
+  { value: 'Noto Sans Thai', label: 'Noto Sans Thai', url: '/fonts/NotoSansThai-Regular.ttf' },
+  // ── ฟอนต์สากล (Latin) สำหรับขายต่างประเทศ ──
+  { value: 'Roboto', label: 'Roboto', url: '/fonts/Roboto-Regular.ttf' },
+  { value: 'Open Sans', label: 'Open Sans', url: '/fonts/OpenSans-Regular.ttf' },
+  { value: 'Inter', label: 'Inter', url: '/fonts/Inter-Regular.ttf' },
+  { value: 'Oswald', label: 'Oswald', url: '/fonts/Oswald-Regular.ttf' },
+  { value: 'Poppins', label: 'Poppins', url: '/fonts/Poppins-Regular.ttf' },
+  { value: 'Lato', label: 'Lato', url: '/fonts/Lato-Regular.ttf' },
 ];

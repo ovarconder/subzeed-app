@@ -341,7 +341,7 @@ export function buildSegmentText(segments: SubtitleCueSegment[], style: Subtitle
  */
 export function buildAssSimple(text: string, start: number, end: number, opts?: Partial<SubtitleStyleParams>): string {
   const style: SubtitleStyleParams = {
-    fontFamily: opts?.fontFamily || 'Arimo',
+    fontFamily: opts?.fontFamily || 'Kanit',
     fontSize: opts?.fontSize || 36,
     position: opts?.position || 'bottom',
     y_offset: opts?.y_offset ?? 0,

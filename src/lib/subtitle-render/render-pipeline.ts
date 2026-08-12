@@ -24,7 +24,9 @@ import { getFFmpeg, terminateFFmpeg } from './ffmpeg-loader';
 import { buildVideoCommand, buildGifCommands } from './ffmpeg-command';
 
 // ─── Config ────────────────────────────────────────────
-const FONT_VFS_DIR = '/fonts';
+// ⚠️ เขียน font ลง root `/` ของ VFS โดยตรง (fontsdir = '/')
+//    เพื่อเลี่ยง createDir FS error กับ singleton instance
+const FONT_VFS_DIR = '/';
 const ASS_VFS_NAME = 'subs.ass';
 
 // ─── Helper: emit progress ─────────────────────────────
@@ -77,12 +79,8 @@ export async function renderSubtitleVideo(
   const inName = `input.${ext}`;
   const outName = `output.${config.output.format}`;
 
-  // 4a. สร้างโฟลเดอร์ /fonts (throw ถ้ามีอยู่แล้ว — catch แล้วไปต่อ)
-  try {
-    await ff.createDir(FONT_VFS_DIR);
-  } catch {
-    // โฟลเดอร์มีอยู่แล้ว (instance เป็น singleton) — ไม่ใช่ปัญหา
-  }
+  // 4a. (ไม่ต้อง createDir — เขียนไฟล์ทั้งหมดลง root `/` ที่มีอยู่แล้ว
+  //     เลี่ยง FS error จาก createDir ซ้ำเมื่อ reuse singleton instance)
 
   // 4b. เขียนวิดีโอ input
   const videoData = typeof config.videoSource === 'string'
@@ -93,7 +91,7 @@ export async function renderSubtitleVideo(
   // 4c. เขียน ASS
   await ff.writeFile(ASS_VFS_NAME, new TextEncoder().encode(ass));
 
-  // 4d. เขียนเฉพาะ fonts ที่ job นี้ใช้จริง
+  // 4d. เขียนเฉพาะ fonts ที่ job นี้ใช้จริง (ลง root `/` ตรง ๆ)
   for (const font of fontFiles) {
     const vfsPath = fontVfsPath(font.vfsName);
     const isRemote = font.source.startsWith('http');

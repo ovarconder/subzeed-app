@@ -130,6 +130,23 @@ export async function renderSubtitleVideo(
   };
   ff.on('log', onLog);
 
+  // อ่านผลลัพธ์เข้าไว้ก่อน cleanup (ต้องอ่านก่อนลบไฟล์ใน finally)
+  const readBytes = async (): Promise<ArrayBuffer> => {
+    const read = await ff.readFile(outName);
+    let buf: ArrayBuffer;
+    if (read instanceof Uint8Array) {
+      buf = read.buffer.slice(0) as ArrayBuffer;
+    } else if (typeof read === 'string') {
+      buf = new TextEncoder().encode(read).buffer as ArrayBuffer;
+    } else {
+      throw new Error('ไม่สามารถอ่านผลลัพธ์จาก FFmpeg ได้');
+    }
+    if (buf.byteLength === 0) throw new Error('FFmpeg สร้างไฟล์ว่างเปล่า');
+    return buf;
+  };
+
+  let dataBuffer: ArrayBuffer | null = null;
+
   try {
     if (output.format === 'gif') {
       const gifCmds = buildGifCommands(inName, ASS_VFS_NAME, FONT_VFS_DIR, outName, commandOutput);
@@ -140,15 +157,26 @@ export async function renderSubtitleVideo(
       console.log('[render] ffmpeg args:', args.join(' '));
       await ff.exec(args);
     }
+    emit(onProgress, 'read-output', 95, 'กำลังอ่านผลลัพธ์...');
+    dataBuffer = await readBytes();
   } catch (err) {
-    // แนบ stderr ล่าสุดเข้าข้อความ error เพื่อช่วยระบุ root cause
+    // ⭐ ffmpeg.wasm บางทีจบงานแล้วแต่ throw 'Aborted()' ระหว่าง cleanup
+    //    (stderr แสดง encode+mux เสร็จ Lsize=...) → ลองอ่าน output ถ้ามีไฟล์จริงให้ใช้ต่อ
     const detail = errLines.slice(-8).join(' | ');
-    throw new Error(
-      `FFmpeg render ล้มเหลว${detail ? ` :: ${detail}` : ''} :: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    const raw = err instanceof Error ? err.message : String(err);
+    const hasOutput = await ff.readFile(outName).then(() => true).catch(() => false);
+    if (hasOutput) {
+      console.warn('[render] FFmpeg abort หลังเสร็จ แต่ output มีอยู่ — ใช้ต่อ');
+      emit(onProgress, 'read-output', 95, 'เรนเดอร์เสร็จ (FFmpeg abort หลัง cleanup)');
+      dataBuffer = await readBytes();
+    } else {
+      throw new Error(
+        `FFmpeg render ล้มเหลว${detail ? ` :: ${detail}` : ''} :: ${raw}`,
+      );
+    }
   } finally {
     ff.off('log', onLog);
-    // 7. Cleanup VFS — รวม palette ชั่วคราว (ถ้ามี)
+    // 7. Cleanup VFS — ลบไฟล์ชั่วคราวทั้งหมด (อ่านค่าไว้แล้ว)
     await Promise.allSettled([
       ff.deleteFile(inName).catch(() => {}),
       ff.deleteFile(outName).catch(() => {}),
@@ -157,19 +185,7 @@ export async function renderSubtitleVideo(
     ]);
   }
 
-  // ─── 7. Read output ─────────────────────────────────
-  emit(onProgress, 'read-output', 95, 'กำลังอ่านผลลัพธ์...');
-  const readResult = await ff.readFile(outName);
-  let dataBuffer: ArrayBuffer;
-  if (readResult instanceof Uint8Array) {
-    dataBuffer = readResult.buffer.slice(0) as ArrayBuffer;
-  } else if (typeof readResult === 'string') {
-    dataBuffer = new TextEncoder().encode(readResult).buffer as ArrayBuffer;
-  } else {
-    throw new Error('ไม่สามารถอ่านผลลัพธ์จาก FFmpeg ได้');
-  }
-
-  if (dataBuffer.byteLength === 0) throw new Error('FFmpeg สร้างไฟล์ว่างเปล่า');
+  if (!dataBuffer) throw new Error('ไม่สามารถอ่านผลลัพธ์จาก FFmpeg ได้');
 
   emit(onProgress, 'done', 100, 'เสร็จสิ้น');
   return new Blob([dataBuffer], { type: mimeOf(output.format) });

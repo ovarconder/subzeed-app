@@ -4,20 +4,17 @@
  */
 
 export function getBasePath(): string {
+  // ใช้ basePath เฉพาะที่กำหนด explicit ผ่าน runtimeConfig เท่านั้น
+  // ⚠️ ห้ามเดาจาก pathname — หน้า /studio, /admin ฯลฯ ไม่ใช่ basePath
+  //    (จะเดาผิดเป็น /studio/api/... ได้)
   if (typeof window === 'undefined') return '';
 
-  // ลองอ่านจาก __NEXT_DATA__
   try {
     const nextData = (window as any).__NEXT_DATA__;
     if (nextData?.runtimeConfig?.basePath) {
       return nextData.runtimeConfig.basePath as string;
     }
   } catch {}
-  // ถ้าไม่ได้ให้เช็คจาก location pathname
-  const parts = window.location.pathname.split('/').filter(Boolean);
-  if (parts.length > 0 && parts[0] !== 'api') {
-    return `/${parts[0]}`;
-  }
 
   return '';
 }

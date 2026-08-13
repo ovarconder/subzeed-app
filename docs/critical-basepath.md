@@ -1,85 +1,73 @@
-# ⚠️ CRITICAL: basePath = "/subzeed" — ห้ามลืมเด็ดขาด!
+# ✅ อัปเดต — basePath ไม่ใช้แล้ว (เป็นเว็บตัวเอง)
 
-> **ระดับ: CRITICAL** — ถ้าลืมจะเสียเวลาเป็นวัน
-> อัปเดตล่าสุด: หลังจากเสียเวลา Debug ไปหลายวัน
-
----
-
-## ปัญหา
-
-`next.config.ts` มี `basePath: "/subzeed"` เพราะแอปถูก reverse proxy ไว้ที่
-`https://overconda.space/subzeed/*`
-
-**ผล:** ทุกเส้นทางใน production ต้องมี `/subzeed` นำหน้า
-- `/api/admin/stats` → **ต้องเรียก** `/subzeed/api/admin/stats`
-- `/dashboard` → ต้องเป็น `/subzeed/dashboard`
-- ฯลฯ
-
-## สำคัญ
-ทุกการทำงานที่เกี่ยวกับ middleware หรือการอ้างอิงไฟล์อะไรต่างๆ "จำเป็น" ตองมี basepath
-เพราะ main website (overconda.space) กับ /subzeed/ อยู่คนละ location (คนละ project)
-แต่เชื่อมหาก้นด้วยการตั้งค่า setting ไม่ใช่ physical 
-**หากไม่มี basepath จะ error ได้**
+> **สถานะ: ไม่ใช้ basePath แล้ว**
+> เดิมแอปถูก reverse proxy ที่ `https://overconda.space/subzeed/*`
+> ทำให้ต้องมี `basePath: "/subzeed"` เพราะเกาะอยู่กับเว็บอื่น
+>
+> ตอนนี้แอปเป็นเว็บของตัวเองที่ root (`https://www.subzeed.com/`)
+> จึง **ไม่จำเป็นต้องใช้ basePath อีกต่อไป**
 
 ---
 
-## วิธีแก้ไขที่ถูกต้อง (ห้ามใช้วิธีอื่น)
+## สาเหตุของ bug ที่เจอ (สำคัญ)
 
-### ✅ ห้ามใช้ fetch(path) ตรงๆ
+`src/lib/api.ts` เดิมใช้ `getBasePath()` ที่ **เดา basePath จาก pathname**:
 
-```ts
-// ❌ แบบนี้ใช้ใน production ไม่ได้
-const res = await fetch('/api/admin/users');
-```
-
-### ✅ ต้องใช้ `api()` helper จาก `@/lib/api` เสมอ
-
-```ts
-// ✅ ใช้ api() helper
-import { api } from '@/lib/api';
-
-const res = await fetch(api('/api/admin/users'), {
-  headers: { 'x-user-id': user?.id },
-});
-```
-
-### ✅ `api()` helper (src/lib/api.ts)
-
-```ts
-export function api(path: string): string {
-  if (typeof window === 'undefined') return path;
-  
-  // เช็ค __NEXT_DATA__ หรือ location pathname
-  const parts = window.location.pathname.split('/').filter(Boolean);
-  if (parts.length > 0 && parts[0] !== 'api') {
-    return `/${parts[0]}${path}`;
-  }
-  return path;
+```js
+const parts = window.location.pathname.split('/').filter(Boolean);
+if (parts.length > 0 && parts[0] !== 'api') {
+  return `/${parts[0]}`;   // ← เดาผิด!
 }
 ```
 
-`api()` จะอ่าน `window.location.pathname` เพื่อหา basePath แล้วเติมให้อัตโนมัติ
-(เช่น /subzeed/api/admin/users)
+เมื่อผู้ใช้อยู่หน้า `/studio`, `/admin` ฯลฯ → มันเดาว่า `parts[0] = 'studio'`
+เป็น basePath → `api('/api/...')` กลายเป็น **`/studio/api/...`** ❌ → 404
+
+ตัวอย่างที่เกิดจริง:
+```
+POST https://www.subzeed.com/studio/api/transcribe-and-save 404 (Not Found)
+```
+แทนที่จะเป็น `https://www.subzeed.com/api/transcribe-and-save`
 
 ---
 
-## ไฟล์ที่ต้องระวัง (ติดตามและแก้ไขแล้ว)
+## สิ่งที่แก้แล้ว (ถูกต้องในปัจจุบัน)
 
-| ไฟล์ | สถานะ |
-|------|--------|
-| `src/app/admin/page.tsx` | ✅ `apiGet()` + `handleUpdateTier()` + `handleUnblock()` ใช้ `api()` |
-| `src/app/studio/page.tsx` | ✅ ใช้ `api()` อยู่แล้ว |
-| ไฟล์อื่นๆ | ⚠️ ตรวจสอบทุกครั้งที่เพิ่ม fetch ใหม่ |
+### `src/lib/api.ts` — ไม่เดา basePath จาก pathname แล้ว
+
+```ts
+export function getBasePath(): string {
+  // ใช้ basePath เฉพาะที่กำหนด explicit ผ่าน runtimeConfig เท่านั้น
+  // ⚠️ ห้ามเดาจาก pathname — หน้า /studio, /admin ฯลฯ ไม่ใช่ basePath
+  if (typeof window === 'undefined') return '';
+  try {
+    const nextData = (window as any).__NEXT_DATA__;
+    if (nextData?.runtimeConfig?.basePath) {
+      return nextData.runtimeConfig.basePath as string;
+    }
+  } catch {}
+  return '';
+}
+```
+
+### `next.config.ts` — `basePath` ถูก comment ทิ้ง
+
+```ts
+//basePath: "/subzeed", // เดิมสำหรับ reverse proxy เก่า — ไม่ใช้แล้ว
+```
 
 ---
 
-## ข้อควรจำ
+## ข้อควรจำ (ปัจจุบัน)
 
-1. **ทุกครั้งที่เรียก `fetch` จาก client-side → ใช้ `api()`**
-2. `api()` ใช้ได้เฉพาะ browser (มี `window`) — server-side render ไม่ต้องใช้
-3. ถ้าเพิ่ม API route ใหม่ อย่าลืมว่า client จะเรียกผ่าน `api('/api/...')`
-4. ถ้าเปิด session ใหม่และต้องแก้ admin/fetch/Api → **อ่านไฟล์นี้ก่อน!**
+1. ✅ เว็บอยู่ที่ root — **อย่า** เดา basePath จาก pathname อีก
+2. ✅ ใช้ `api()` helper ต่อไป (สะอาด ถ้า runtimeConfig ตั้ง basePath จริงค่อยอ่าน)
+3. ⚠️ ถ้าในอนาคต mount ที่ subpath จริง ๆ ค่อยเอา basePath กลับมา
+   และต้อง configure ผ่าน runtimeConfig อย่างถูกต้อง (ไม่ใช่เดา)
+4. ⚠️ อย่าแก้ `getBasePath()` ให้เดาจาก `window.location.pathname` อีกเด็ดขาด
+   (เดาผิดทุกครั้งเมื่ออยู่หน้า subfolder → ปัญหา 404 เดิมซ้ำ)
+5. ✅ `api('/api/...')` เรียกจากหน้าไหนก็ถูก — ฟังก์ชันต้อง return path ตรงเสมอ
 
 ---
 
-_ถ้าไม่ทำตามนี้จะเสียเวลา Debug อีกหลายวัน_
+_อัปเดต ณ วันที่มีการลบ basePath ออกจากการใช้งาน (เป็นเว็บของตัวเองแล้ว)_

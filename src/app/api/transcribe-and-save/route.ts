@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const audioFile = formData.get('audio') as Blob | null;
+    const audioUrl = (formData.get('audioUrl') as string) || '';
     const userId = formData.get('userId') as string | null;
     const projectTitle = (formData.get('projectTitle') as string) || 'วิดีโอไม่มีชื่อ';
     const enableAiVocab = formData.get('enableAiVocab') === 'true';
@@ -33,9 +34,9 @@ export async function POST(request: NextRequest) {
     const aiSmartLanguage = (formData.get('aiSmartLanguage') as string) || 'en';
     const brandTermsRaw = formData.get('brandTerms') as string | null;
 
-    if (!audioFile || !userId) {
+    if ((!audioFile && !audioUrl) || !userId) {
       return NextResponse.json(
-        { error: 'Missing audio or userId' },
+        { error: 'Missing audio (blob) or audioUrl or userId' },
         { status: 400 }
       );
     }
@@ -66,8 +67,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ─── รับ audio source (จาก public URL หรือ blob) ──
+    //    ต้องทำก่อนคำนวณ quota เพราะต้องรู้ขนาดไฟล์
+    let audioBuffer: ArrayBuffer;
+    let audioSizeBytes: number;
+
+    if (audioUrl) {
+      // ✅ หลังอัปโหลดขึ้น Supabase Storage → server ดึงจาก public URL
+      const res = await fetch(audioUrl);
+      if (!res.ok) {
+        return NextResponse.json(
+          { error: 'ไม่สามารถโหลดไฟล์เสียงจาก Storage ได้' },
+          { status: 400 }
+        );
+      }
+      audioBuffer = await res.arrayBuffer();
+      audioSizeBytes = audioBuffer.byteLength;
+    } else {
+      audioBuffer = await audioFile!.arrayBuffer();
+      audioSizeBytes = audioBuffer.byteLength;
+    }
+
     const tierConfig = TIER_CONFIGS[profile.tier as SubscriptionTier];
-    const estimatedDurationSeconds = audioFile.size / 32000;
+    const estimatedDurationSeconds = audioSizeBytes / 32000;
     const estimatedMinutes = Math.ceil(estimatedDurationSeconds / 60);
     const quotaLeft = profile.quota_minutes_total - profile.quota_minutes_used;
 
@@ -85,8 +107,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ─── 3. Whisper API (Dynamic Provider) ──────────────
-    const audioBuffer = await audioFile.arrayBuffer();
+    // ─── 4. Whisper API (Dynamic Provider) ──────────────
 
     let transcriptionResult;
     try {

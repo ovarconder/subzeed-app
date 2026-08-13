@@ -235,6 +235,9 @@ export default function StudioPage() {
     store.setIsProcessing(true);
     store.setProcessingProgress(0);
 
+    // เก็บ path ของไฟล์ WAV ใน Storage เพื่อลบทิ้งหลังเสร็จ/error
+    let audioPath: string | undefined;
+
     try {
       // 1. Extract audio ด้วย library ใหม่
       console.log('[Studio] Starting audio extraction...', {
@@ -249,9 +252,34 @@ export default function StudioPage() {
       );
       console.log('[Studio] Audio extraction done', { sizeBytes: result.sizeBytes, durationSeconds: result.durationSeconds });
 
-      // 2. ส่ง transcribe-and-save (all-in-one)
+      // 2. อัปโหลด WAV ขึ้น Supabase Storage — หลีกเลี่ยง HTTP body size limit
+      //    (บน Vercel serverless มี limit ขนาด request body → WAV ใหญ่ทำ fail)
+      audioPath = `audio/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.wav`;
+      const { error: uploadError } = await supabase.storage
+        .from('site-assets')
+        .upload(audioPath, result.blob, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: 'audio/wav',
+        });
+
+      if (uploadError) {
+        console.error('[Studio] Audio upload error:', uploadError);
+        addToast(`อัปโหลดเสียงไม่สำเร็จ: ${uploadError.message}`, 'error', true);
+        store.setIsProcessing(false);
+        store.setProcessingProgress(0);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('site-assets')
+        .getPublicUrl(audioPath);
+      const audioUrl = urlData?.publicUrl || '';
+      console.log('[Studio] Audio uploaded to storage', { audioUrl, sizeBytes: result.sizeBytes });
+
+      // 3. ส่ง transcribe-and-save (ใช้ audioUrl เพื่อให้ server ดึงจาก Storage)
       const formData = new FormData();
-      formData.append('audio', result.blob, 'audio.wav');
+      formData.append('audioUrl', audioUrl);
       formData.append('userId', user.id);
       formData.append('projectTitle', store.videoFile.name);
       formData.append('enableAiVocab', enableAiVocab ? 'true' : 'false');
@@ -369,6 +397,12 @@ export default function StudioPage() {
       // persistent — ให้ค้างไว้จนกว่าผู้ใช้กด ✕ เพื่ออ่านข้อผิดพลาดได้ทัน
       addToast(`ถอดความไม่สำเร็จ: ${err?.message || err}`, 'error', true);
     } finally {
+      // ลบไฟล์ WAV ออกจาก Storage (ไม่จำเป็นต้องเก็บต่อ — ลดขยะ bucket)
+      try {
+        if (typeof audioPath !== 'undefined') {
+          supabase.storage.from('site-assets').remove([audioPath]);
+        }
+      } catch { /* ignore */ }
       store.setIsProcessing(false);
       store.setProcessingProgress(0);
     }

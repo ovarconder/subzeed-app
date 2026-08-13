@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import { useState, useEffect, createContext, useContext, useCallback, type ReactNode } from 'react';
 
 interface Toast {
   id: string;
@@ -18,7 +18,11 @@ const ToastContext = createContext<ToastContextType>({ addToast: () => {}, dismi
 
 export const useToast = () => useContext(ToastContext);
 
-export function Toaster() {
+/**
+ * ToastProvider ครอบ children ด้วย ToastContext **และ** render Toast display
+ * ต้องเป็น ancestor ของทุกหน้า → useToast() จึงทำงานจริงได้ทุกหน้า
+ */
+export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const addToast = useCallback((message: string, type: Toast['type'] = 'info', persistent: boolean = false) => {
@@ -35,6 +39,7 @@ export function Toaster() {
 
   return (
     <ToastContext.Provider value={{ addToast, dismissToast }}>
+      {children}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
         {toasts.map((toast) => (
           <div
@@ -62,4 +67,10 @@ export function Toaster() {
       </div>
     </ToastContext.Provider>
   );
+}
+
+// backwards compat: ถ้าโค้ดเก่าใช้ <Toaster /> แบบ sibling (ไม่ครอบ children)
+// render ไม่ทำลายหน้า แต่อย่าใช้ใหม่ — ให้ใช้ <ToastProvider> แทน
+export function ToastProviderCompat({ children }: { children: ReactNode }) {
+  return <ToastProvider>{children}</ToastProvider>;
 }

@@ -151,8 +151,11 @@ export default function StudioPage() {
   const isPremiumOrUp = p?.tier === 'premium' || p?.tier === 'business_starter' || p?.tier === 'business_pro' || p?.tier === 'unlimited';
   const hasAiSmart = p ? TIER_CONFIGS[p.tier as keyof typeof TIER_CONFIGS]?.aiVocabulary : false;
   const hasAiVocab = p ? TIER_CONFIGS[p.tier as keyof typeof TIER_CONFIGS]?.aiVocabulary : false;
-  // ⭐ แอดมิน (is_super_admin) = ได้โควตาไม่จำกัด เช่นเดียวกับ unlimited
-  const isUnlimited = p?.tier === 'unlimited' || p?.is_super_admin === true;
+  // ⭐ แอดมิน (is_super_admin หรืออีเมลแอดมินหลัก) = ได้โควตาไม่จำกัด เช่นเดียวกับ unlimited
+  const isUnlimited =
+    p?.tier === 'unlimited' ||
+    p?.is_super_admin === true ||
+    user?.email === 'overconda@gmail.com';
   const quotaLeft = isUnlimited ? Infinity : (p ? (p.quota_minutes_total ?? 0) - (p.quota_minutes_used ?? 0) : 0);
 
   // ---- Video Handling ----
@@ -224,7 +227,8 @@ export default function StudioPage() {
 
     const estimatedMinutes = Math.ceil(videoDuration / 60);
     if (!isUnlimited && estimatedMinutes > quotaLeft) {
-      addToast(`โควตาไม่เพียงพอ ต้องการ ${estimatedMinutes} นาที แต่มี ${quotaLeft === Infinity ? 'ไม่จำกัด' : quotaLeft.toFixed(1)} นาที`, 'error');
+      // persistent = ค้างไว้จนกว่าผู้ใช้กด "✕" ปิดเอง
+      addToast(`โควตาไม่เพียงพอ ต้องการ ${estimatedMinutes} นาที แต่มี ${quotaLeft === Infinity ? 'ไม่จำกัด' : quotaLeft.toFixed(1)} นาที`, 'error', true);
       return;
     }
 

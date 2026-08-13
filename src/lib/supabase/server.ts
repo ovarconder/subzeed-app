@@ -44,7 +44,7 @@ export const createServerSupabase = async () => {
           }
         },
       },
-    }ง
+    }
   );
 };
 

@@ -237,7 +237,11 @@ export default function StudioPage() {
 
     try {
       // 1. Extract audio ด้วย library ใหม่
-      console.log('[Studio] Starting audio extraction...');
+      console.log('[Studio] Starting audio extraction...', {
+        fileType: store.videoFile.type,
+        fileSizeMB: Math.round(store.videoFile.size / 1024 / 1024),
+        duration: videoDuration,
+      });
       const result = await extractAudio(
         store.videoFile,
         { targetSampleRate: 16000, normalizeAudio: true },
@@ -267,12 +271,17 @@ export default function StudioPage() {
       console.log('[Studio] Response', { ok: response.ok, status: response.status, data });
 
       if (!response.ok) {
+        console.error('[Studio] transcribe-and-save FAILED', {
+          status: response.status,
+          statusText: response.statusText,
+          body: data,
+        });
         if (response.status === 402) {
-          addToast(`โควตาไม่พอ — ต้องการ ${data.needed} นาที`, 'error');
+          addToast(`โควตาไม่พอ — ต้องการ ${data.needed} นาที`, 'error', true);
         } else if (response.status === 403) {
-          addToast('บัญชีถูกระงับชั่วคราว ติดต่อฝ่ายสนับสนุน', 'error');
+          addToast('บัญชีถูกระงับชั่วคราว ติดต่อฝ่ายสนับสนุน', 'error', true);
         } else {
-          addToast(data.error || 'ถอดความไม่สำเร็จ', 'error');
+          addToast(data.error || 'ถอดความไม่สำเร็จ', 'error', true);
         }
         return;
       }
@@ -350,7 +359,15 @@ export default function StudioPage() {
       const smartMsg = data.aiSmartApplied ? ` + AI แปล(${data.aiSmartLanguage || 'en'})` : '';
       addToast(`ถอดความสำเร็จ! ${newSubtitles.length} รายการ${vocabMsg}${smartMsg}`, 'success');
     } catch (err: any) {
-      addToast(`เกิดข้อผิดพลาด: ${err.message}`, 'error');
+      console.error('[Studio] handleTranscribe ERROR:', {
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack?.slice(0, 800),
+        videoFile: store.videoFile?.name,
+        videoFileSize: store.videoFile?.size,
+      });
+      // persistent — ให้ค้างไว้จนกว่าผู้ใช้กด ✕ เพื่ออ่านข้อผิดพลาดได้ทัน
+      addToast(`ถอดความไม่สำเร็จ: ${err?.message || err}`, 'error', true);
     } finally {
       store.setIsProcessing(false);
       store.setProcessingProgress(0);

@@ -4,8 +4,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-const SITE_ORIGIN = (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.overconda.space').replace(/\/+$/, '');
-const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || '/subzeed').replace(/\/+$/, '');
+// ⭐ domain จริงของแอปได้มาจาก request เอง (dynamic) ไม่ hardcode
+//    รองรับทั้ง subzeed.com, www.subzeed.com, localhost โดยไม่ต้อง set env
+const BASE_PATH = ''; // app อยู่ที่ root (basePath ไม่ได้ enable)
+
+// domain สำหรับ cookie: ตัด subdomain www. ออก เหลือ root domain
+// (เช่น www.subzeed.com → .subzeed.com) เพื่อให้ใช้ได้ทั้ง root + www
+function cookieDomain(hostname: string): string | undefined {
+  // localhost/IP → ไม่ต้อง set domain (javascript cookie ปกติ)
+  if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') {
+    return undefined;
+  }
+  return hostname.startsWith('www.') ? hostname.slice(4) : hostname;
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -13,8 +24,12 @@ export async function GET(request: NextRequest) {
   const redirectTo = searchParams.get('redirect_to');
   let next = searchParams.get('redirect') || redirectTo || '/dashboard';
 
+  // ⭐ ใช้ origin จริงที่ OAuth กลับเข้ามา (https://www.subzeed.com, http://localhost:3000 ฯลฯ)
+  const origin = request.nextUrl.origin;
+  const host = request.nextUrl.hostname || '';
+
   if (!code) {
-    return NextResponse.redirect(`${SITE_ORIGIN}${BASE_PATH}/login?error=missing_code`);
+    return NextResponse.redirect(`${origin}/login?error=missing_code`);
   }
 
   const cookieStore = await cookies();
@@ -23,10 +38,10 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookieOptions: {
-        domain: 'overconda.space',
-        path: BASE_PATH,
+        domain: cookieDomain(host),
+        path: BASE_PATH || '/',
         sameSite: 'lax' as const,
-        secure: true,
+        secure: request.nextUrl.protocol === 'https:',
       },
       cookies: {
         getAll() {
@@ -35,7 +50,7 @@ export async function GET(request: NextRequest) {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, { ...options, path: BASE_PATH })
+              cookieStore.set(name, value, { ...options, path: BASE_PATH || '/' })
             );
           } catch {
             // Server Component context — ignore
@@ -49,7 +64,7 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[auth/callback] exchangeCodeForSession error:', error.message);
-    return NextResponse.redirect(`${SITE_ORIGIN}${BASE_PATH}/login?error=auth_failed`);
+    return NextResponse.redirect(`${origin}/login?error=auth_failed`);
   }
 
   // ─── บังคับตรวจสิทธิ์ฝั่ง Server ทันทีหลังยืนยันตัวตนสำเร็จ ───-
@@ -71,8 +86,8 @@ export async function GET(request: NextRequest) {
     console.error('[auth/callback] Admin checking error:', err);
   }
 
-  const cleanNext = next.startsWith(BASE_PATH) ? next.slice(BASE_PATH.length) : next;
-  const finalPath = cleanNext.startsWith('/') ? cleanNext : `/${cleanNext}`;
+  // ⭐ BASE_PATH เป็น '' (root) → ไม่ต้องตัด prefix; ปรับ path ให้ขึ้นต้นด้วย / เสมอ
+  const cleanNext = next.startsWith('/') ? next : `/${next}`;
 
-  return NextResponse.redirect(`${SITE_ORIGIN}${BASE_PATH}${finalPath}`);
+  return NextResponse.redirect(`${origin}${cleanNext}`);
 }

@@ -2,8 +2,10 @@
 // 🎵 Audio Extraction & Optimization — SubZeed
 // ============================================================
 // ดึงแทร็กเสียงจากวิดีโอโดยใช้ Web Audio API ฝั่ง Client
-// เพื่อลดขนาดไฟล์ก่อนส่งไป Whisper API
+// และ encode เป็น MP3/WAV เพื่อลดขนาดไฟล์ก่อนส่ง Whisper API
 // ============================================================
+
+import { Mp3Encoder } from '@breezystack/lamejs';
 
 /**
  * ตัวเลือกการแปลงเสียง
@@ -19,6 +21,11 @@ export interface AudioExtractOptions {
   trimSilence: boolean;
   /** Normalize volume */
   normalizeAudio: boolean;
+  /**
+   * รูปแบบไฟล์ที่ encode — 'mp3' (เล็กกว่า, แนะนำ) หรือ 'wav'
+   * MP3 64kbps mono ≈ 8KB/วินาที เทียบกับ WAV 16kHz/16bit ≈ 32KB/วินาที
+   */
+  encodeFormat: 'mp3' | 'wav';
 }
 
 const DEFAULT_OPTIONS: AudioExtractOptions = {
@@ -27,14 +34,17 @@ const DEFAULT_OPTIONS: AudioExtractOptions = {
   bitsPerSample: 16,
   trimSilence: false,
   normalizeAudio: true,
+  encodeFormat: 'mp3',
 };
 
 /**
  * ผลลัพธ์จากการ extract
  */
 export interface AudioExtractResult {
-  /** WAV blob สำหรับส่ง API */
+  /** MP3/WAV blob สำหรับส่ง API */
   blob: Blob;
+  /** MIME type ของ blob ('audio/mp3' | 'audio/wav') */
+  mimeType: string;
   /** ระยะเวลาเสียงจริง (วินาที) */
   durationSeconds: number;
   /** ขนาดไฟล์ (bytes) */
@@ -123,20 +133,76 @@ export async function extractAudio(
   }
   onProgress?.(70);
 
-  // 6. เข้ารหัสเป็น WAV
-  const wavBuffer = encodeWav(resampled, opts.targetSampleRate);
+  // 6. เข้ารหัสตาม format (MP3 แนะนำ — ไฟล์เล็กกว่าราว 4 เท่า)
+  let encodedBuffer: ArrayBuffer;
+  let mimeType: string;
+
+  if (opts.encodeFormat === 'mp3') {
+    encodedBuffer = encodeMp3(resampled, opts.targetSampleRate);
+    mimeType = 'audio/mp3';
+  } else {
+    encodedBuffer = encodeWav(resampled, opts.targetSampleRate);
+    mimeType = 'audio/wav';
+  }
   onProgress?.(80);
 
   // 7. สร้าง Blob
-  const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+  const blob = new Blob([encodedBuffer], { type: mimeType });
   onProgress?.(100);
 
   return {
     blob,
+    mimeType,
     durationSeconds,
     sizeBytes: blob.size,
     originalSampleRate,
   };
+}
+
+// ============================================================
+// MP3 Encoder — 64kbps Mono (ใช้ lamejs) → ไฟล์เล็กกว่า WAV หลายเท่า
+// ============================================================
+function encodeMp3(samples: Float32Array, sampleRate: number): ArrayBuffer {
+  const kbps = 64; // 64kbps mono — คุณภาพพอสำหรับ Whisper
+  const encoder = new Mp3Encoder(1, sampleRate, kbps);
+
+  // Float32 (-1..1) → Int16 (-32768..32767)
+  const int16 = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+
+  // เข้ารหัสเป็นชิ้น ๆ (lamejs แนะนำ encode 1152 samples ต่อครั้ง)
+  const chunkSize = 1152;
+  const result: Uint8Array[] = [];
+  let offset = 0;
+
+  while (offset < int16.length) {
+    const end = Math.min(offset + chunkSize, int16.length);
+    const chunk = int16.subarray(offset, end);
+    const encoded = encoder.encodeBuffer(chunk);
+    if (encoded.length > 0) {
+      result.push(new Uint8Array(encoded));
+    }
+    offset = end;
+  }
+
+  const flushed = encoder.flush();
+  if (flushed.length > 0) {
+    result.push(new Uint8Array(flushed));
+  }
+
+  // รวมทุกชิ้นเป็น buffer เดียว
+  const total = result.reduce((sum, arr) => sum + arr.length, 0);
+  const merged = new Uint8Array(total);
+  let pos = 0;
+  for (const arr of result) {
+    merged.set(arr, pos);
+    pos += arr.length;
+  }
+
+  return merged.buffer;
 }
 
 /**

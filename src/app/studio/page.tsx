@@ -254,13 +254,14 @@ export default function StudioPage() {
 
       // 2. อัปโหลด WAV ขึ้น Supabase Storage — หลีกเลี่ยง HTTP body size limit
       //    (บน Vercel serverless มี limit ขนาด request body → WAV ใหญ่ทำ fail)
-      audioPath = `audio/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.wav`;
+      const audioExt = result.mimeType === 'audio/mp3' ? 'mp3' : 'wav';
+      audioPath = `audio/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${audioExt}`;
       const { error: uploadError } = await supabase.storage
         .from('site-assets')
         .upload(audioPath, result.blob, {
           cacheControl: '3600',
           upsert: false,
-          contentType: 'audio/wav',
+          contentType: result.mimeType,
         });
 
       if (uploadError) {

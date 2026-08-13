@@ -20,30 +20,18 @@ export default function DashboardPage() {
   const [adminChecked, setAdminChecked] = useState(false);
   const supabase = createClient();
 
-  // ─── Admin Guard + Redirect (เช็คครั้งเดียว) ──────────
+  // ─── ตรวจสิทธิ์ครั้งเดียว (ไม่บังคับ redirect admin ไป /admin) ──
   useEffect(() => {
     if (isLoading || adminChecked) return;
-
-    const isUserAdmin = profile?.is_super_admin || user?.email === 'overconda@gmail.com';
-
-    if (isUserAdmin) {
-      router.push('/admin?tab=settings');
-      return;
-    }
-
     setAdminChecked(true);
-  }, [profile, user, isLoading, adminChecked, router]);
+  }, [isLoading, adminChecked]);
 
-  // ─── โหลดโปรเจกต์ (สำหรับผู้ใช้ทั่วไปเท่านั้น) ────────
+  // ─── โหลดโปรเจกต์ ─────────────────────────────────────
   useEffect(() => {
-
     if (!adminChecked || isLoading) return;
-
-
 
     if (!profile) {
       setLoading(false);
-
       return;
     }
 
@@ -56,7 +44,6 @@ export default function DashboardPage() {
         if (result.data) setProjects(result.data);
         setLoading(false);
       });
-
   }, [profile, adminChecked, isLoading]);
 
   // ─── ซ่อนหน้า Dashboard กรณียังโหลดสิทธิ์ หรือเป็นแอดมินที่กำลังถูก redirect ──
@@ -81,9 +68,16 @@ export default function DashboardPage() {
               <h1 className="text-2xl font-bold">Dashboard</h1>
               <p className="text-text-secondary text-sm">จัดการโปรเจกต์และซับไตเติลของคุณ</p>
             </div>
-            <Link href="/studio">
-              <Button>+ สร้างโปรเจกต์ใหม่</Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              {isUserAdmin && (
+                <Link href="/admin?tab=settings">
+                  <Button variant="outline">🎛 Admin Panel</Button>
+                </Link>
+              )}
+              <Link href="/studio">
+                <Button>+ สร้างโปรเจกต์ใหม่</Button>
+              </Link>
+            </div>
           </div>
 
           {/* Quota Card */}

@@ -151,7 +151,8 @@ export default function StudioPage() {
   const isPremiumOrUp = p?.tier === 'premium' || p?.tier === 'business_starter' || p?.tier === 'business_pro' || p?.tier === 'unlimited';
   const hasAiSmart = p ? TIER_CONFIGS[p.tier as keyof typeof TIER_CONFIGS]?.aiVocabulary : false;
   const hasAiVocab = p ? TIER_CONFIGS[p.tier as keyof typeof TIER_CONFIGS]?.aiVocabulary : false;
-  const isUnlimited = p?.tier === 'unlimited';
+  // ⭐ แอดมิน (is_super_admin) = ได้โควตาไม่จำกัด เช่นเดียวกับ unlimited
+  const isUnlimited = p?.tier === 'unlimited' || p?.is_super_admin === true;
   const quotaLeft = isUnlimited ? Infinity : (p ? (p.quota_minutes_total ?? 0) - (p.quota_minutes_used ?? 0) : 0);
 
   // ---- Video Handling ----
@@ -789,7 +790,7 @@ export default function StudioPage() {
             )}
 
             <div className="ml-auto text-sm text-text-secondary flex items-center gap-3">
-              {isFree && (
+              {isFree && !isUnlimited && (
                 <span className="text-xs text-warning">🔒 ลายน้ำ</span>
               )}
               {isUnlimited ? (

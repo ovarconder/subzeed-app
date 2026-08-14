@@ -18,6 +18,7 @@ import type {
   SubtitleBoxStyle,
   FontWeight,
 } from './types';
+import { resolveFamilyName } from './font-registry';
 
 // ─── Color Conversion ──────────────────────────────────
 // UI ใช้ hex (#RRGGBB / #RGB) หรือ rgba() หรือชื่อสี
@@ -160,7 +161,6 @@ export function buildAss(style: SubtitleStyleParams, cues: SubtitleCue[]): strin
   l.push(ASS_STYLE_LINE_FORMAT);
 
   // Style row ฐานตามตำแหน่ง (จาก global box) — สำหรับบรรทัดที่ไม่ override
-  const baseKeys = baseStyleKeys(style);
   const styleRows: string[] = [];
 
   // เก็บ mapping cue → ชื่อ style row ที่จะใช้ (เพื่อ override box/position per line)
@@ -172,11 +172,17 @@ export function buildAss(style: SubtitleStyleParams, cues: SubtitleCue[]): strin
   // จากนั้น: ตรวจว่า cue ไหนมี box/ตำแหน่งเฉพาะ → สร้าง style row เดิมเพิ่ม (ต่างจาก global)
   cues.forEach((cue, i) => {
     const pos = cue.position || style.position || 'bottom';
-    const deviatesFromBase = JSON.stringify(cue.displayStyle ?? null) !== JSON.stringify(style.box ?? null);
+    // deviates เฉพาะเมื่อ cue ระบุ displayStyle ที่ต่างจาก global box จริง ๆ
+    // (ถ้า cue ไม่มี displayStyle → เหมือน global → ใช้ global style ได้เลย)
+    const deviatesFromBase =
+      cue.displayStyle !== undefined &&
+      JSON.stringify(cue.displayStyle) !== JSON.stringify(style.box ?? null);
     if (deviatesFromBase) {
       // สร้าง style row เฉพาะของบรรทัดนี้ (ใช้ box ของบรรทัดแทน global)
       const name = `d${i}_${pos}`;
-      styleRows.push(buildPerLineStyle(name, style, cue.displayStyle, pos));
+      // ยึด y_offset ต่อเส้น (cue) ก่อน, ไม่ then global
+      const cueY = cue.y_offset ?? style.y_offset ?? 0;
+      styleRows.push(buildPerLineStyle(name, style, cue.displayStyle, pos, cueY));
       cueStyleName.set(i, name);
     }
   });
@@ -190,17 +196,10 @@ export function buildAss(style: SubtitleStyleParams, cues: SubtitleCue[]): strin
   l.push('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
   cues.forEach((cue, i) => {
     const styleName = cueStyleName.get(i) || cue.position || style.position || 'bottom';
-    l.push(buildDialogue(cue, style, styleName, style));
+    buildDialogue(cue, style, styleName, cue.displayStyle).forEach((dl) => l.push(dl));
   });
 
   return l.join('\n');
-}
-
-/**
- * key รวมของ box ที่ทำให้ global styles ทั้ง 3 ต่างกันน้อยหรือไม่
- */
-function baseStyleKeys(style: SubtitleStyleParams): string {
-  return JSON.stringify({ box: style.box, seg: style.defaultSegmentStyle });
 }
 
 /**
@@ -211,21 +210,25 @@ function buildPerLineStyle(
   style: SubtitleStyleParams,
   displayStyle: SubtitleBoxStyle | undefined,
   pos: SubtitlePosition,
+  yOffsetPct: number,
 ): string {
-  const box = displayStyle;
+  // ถ้าไม่ระบุ displayStyle → ใช้ global box (style.box) เป็น fallback
+  const box = displayStyle ?? style.box;
   const seg = style.defaultSegmentStyle;
 
-  const useBox = box && box.bgActive !== false && box.bgOpacity > 0;
-  const borderStyle: 1 | 3 = useBox ? 3 : 1;
-  const outlineWidth = useBox ? 0 : seg && seg.strokeActive !== false && seg.strokeWidth ? seg.strokeWidth : 0;
-  const shadowDist = useBox ? 0 : seg && seg.shadowActive !== false && seg.shadowOffsetY ? Math.abs(seg.shadowOffsetY) : 0;
-  const padL = useBox ? Math.round(box.paddingX ?? 12) : 0;
-  const padR = useBox ? Math.round(box.paddingX ?? 12) : 0;
-  const padV = useBox ? Math.round(box.paddingY ?? 6) : 0;
+  // ⭐ ไม่ใช้ BorderStyle=3 กล่อง; กล่องมุมโค้งทำจาก event-layer (blur-outline)
+  const borderStyle: 1 | 3 = 1;
+  const strokeOn = seg && seg.strokeActive !== false && seg.strokeWidth > 0;
+  const shadowOn = seg && seg.shadowActive !== false && (seg.shadowOffsetX !== 0 || seg.shadowOffsetY !== 0);
+  const outlineWidth = strokeOn ? seg.strokeWidth ?? 0 : 0;
+  const shadowDist = shadowOn ? Math.max(1, Math.abs(seg.shadowOffsetY || seg.shadowOffsetX)) : 0;
+  const padL = 0;
+  const padR = 0;
+  const padV = 0;
 
   return buildStyleLine({
     name,
-    fontName: style.fontFamily,
+    fontName: resolveFamilyName(style.fontFamily),
     fontSize: style.fontSize ?? 24,
     primary: seg?.color ? colorWithOpacityToAss(seg.color, seg.opacity ?? 1) : '&H00FFFFFF&',
     secondary: '&H000000FF&',
@@ -241,7 +244,7 @@ function buildPerLineStyle(
     marginL: padL,
     marginR: padR,
     alignment: ALIGNMENT_BY_POSITION[pos],
-    marginV: posVOffset(pos, style.y_offset ?? 0, padV),
+    marginV: posVOffset(pos, yOffsetPct, padV),
   });
 }
 
@@ -249,9 +252,8 @@ function buildPerLineStyle(
  * สร้าง Style rows สำหรับทั้ง 3 ตำแหน่ง
  */
 export function buildPositionStyles(style: SubtitleStyleParams): string[] {
-  const fontName = style.fontFamily;
+  const fontName = resolveFamilyName(style.fontFamily);
   const fontSize = style.fontSize ?? 24;
-  const position = style.position || 'bottom';
   const yOffsetPct = style.y_offset ?? 0;
 
   const seg = style.defaultSegmentStyle;
@@ -270,17 +272,20 @@ export function buildPositionStyles(style: SubtitleStyleParams): string[] {
   const bold = seg && (seg.fontWeight === 'bold' || seg.fontWeight === 'bold-italic') ? 1 : 0;
   const italic = seg && (seg.fontWeight === 'italic' || seg.fontWeight === 'bold-italic') ? 1 : 0;
 
-  // กำหนด BorderStyle/Outline/Shadow จาก box (background) + segment (stroke/shadow)
-  // - ถ้ามี background box → BorderStyle=3 (opaque box) ใช้ Padding เป็น margin
-  const useBox = box && box.bgActive !== false && box.bgOpacity > 0;
-  const borderStyle: 1 | 3 = useBox ? 3 : 1;
-  const outlineWidth = useBox ? 0 : seg && seg.strokeActive !== false && seg.strokeWidth ? seg.strokeWidth : 0;
-  const shadowDist = useBox ? 0 : seg && seg.shadowActive !== false && seg.shadowOffsetY ? Math.abs(seg.shadowOffsetY) : 0;
+  // กำหนด BorderStyle/Outline/Shadow จาก segment (stroke/shadow) เสมอ
+  // ⭐ ไม่ใช้ BorderStyle=3 กล่องอีกต่อไป เพราะกล่องมุมโค้งทำจาก event-layer
+  //    (เทคนิค blur-outline) แทน → ทำให้วาดกล่องโค้ง auto-fit ได้
+  // - Outline/Shadow ของข้อความ กำหนดจาก defaultSegmentStyle
+  const borderStyle: 1 | 3 = 1; // กล่องที่ทำผ่าน \bord+\blur ใน layer กล่อง
+  const strokeOn = seg && seg.strokeActive !== false && seg.strokeWidth > 0;
+  const shadowOn = seg && seg.shadowActive !== false && (seg.shadowOffsetX !== 0 || seg.shadowOffsetY !== 0);
+  const outlineWidth = strokeOn ? seg.strokeWidth ?? 0 : 0;
+  const shadowDist = shadowOn ? Math.max(1, Math.abs(seg.shadowOffsetY || seg.shadowOffsetX)) : 0;
 
-  // margin จาก padding ของ box (ขยายรอบข้อความ)
-  const padL = useBox ? Math.round(box.paddingX ?? 12) : 0;
-  const padR = useBox ? Math.round(box.paddingX ?? 12) : 0;
-  const padV = useBox ? Math.round(box.paddingY ?? 6) : 0;
+  // margin ทั้งหมดเป็น 0 (กล่อง padding อยู่ที่ \bord ของ layer กล่อง ไม่ใช่ margin)
+  const padL = 0;
+  const padR = 0;
+  const padV = 0;
 
   const common: Omit<AssStyle, 'name' | 'alignment' | 'marginV'> = {
     fontName,
@@ -329,42 +334,86 @@ function posVOffset(pos: SubtitlePosition, yOffsetPct: number, padV: number): nu
   }
 }
 
+// ─── Box Layer (เทคนิค blur-outline) ───────────────────
+/**
+ * คำนวณค่าสำหรับสร้างกล่องมุมโค้งแบบ "blur-outline" (หน่วงการ blur)
+ * กล่องถูกวาดด้วยตัวอักษรที่เป็น layer แยก (หลัง text) ผ่าน:
+ *   \bord{หนา} → ขยายกล่องออกไปจากตัวอักษร (≈ paddingY)
+ *   \blur{R}   → ทำให้มุมโค้งมน (≈ radius)
+ *   \1c กล่องสี  → สีกล่อง (+ opacity)
+ *
+ * ASS ไม่มีกล่อง rect มุมโค้ง auto-fit ตรง ๆ เทคนิคนี้จึงใช้ texture ของ
+ * glyph blur จนเป็น"กล่องทึบโค้ง"fit ตามความยาวข้อความอัตโนมัติ
+ *
+ * @returns null ถ้าไม่มีกล่อง
+ */
+function boxLayerParams(box: SubtitleBoxStyle | undefined): { text: string; borderW: number; radius: number } | null {
+  if (!box || box.bgActive === false || (box.bgOpacity ?? 0) <= 0) return null;
+
+  // ความหนาของกล่อง = paddingY (หลัก) — ถ้าหน้า X เยอะกว่าจะใช้ X เพื่อกันกล่องบาง
+  const padY = Math.round(box.paddingY ?? 6);
+  const padX = Math.round(box.paddingX ?? 12);
+  const borderW = Math.max(2, Math.max(padX, padY) || 6);
+  // ความโค้งมุม = borderRadius (clamp ให้ไม่กลมเกินไป)
+  const radius = Math.max(1, Math.min(12, Math.round(box.borderRadius ?? 6)));
+
+  const boxColor = colorWithOpacityToAss(box.bgColor || '#000000', box.bgOpacity ?? 0.6);
+  // override font/effect ล้วน ให้ทั้ง glyph เป็นกล่องทึบสีเดียว
+  const text = `{\\1c${boxColor}\\bord${borderW}\\blur${radius}\\2c${boxColor}\\3c${boxColor}\\4c${boxColor}\\b0\\i0\\shad0}`;
+  return { text, borderW, radius };
+}
+
 // ─── Dialogue Line ─────────────────────────────────────
 /**
- * แปลง 1 cue → Dialogue: line
- * รองรับทั้งข้อความ plain (text) และ segment (หลายสไตล์)
+ * แปลง 1 cue → Dialogue line(s)
  *
- * @param cue             แถว cue
- * @param style           global style
- * @param styleName       ชื่อ style row ที่จะใช้ (อาจเป็น style line เฉพาะ)
- * @param globalStyle     ใช้คำนวณ marginV หาจาก global box + y_offset base
+ * ⭐ เทคนิคกล่องมุมโค้ง (blur-outline):
+ *    - ถ้า box active → ส่งคืน 2 lines
+ *        - Layer 0 = กล่องทึบโค้ง (text ซ้ำ, เป็นสีกล่อง + bord/blur)
+ *        - Layer 1 = ตัวอักษรปกติ (segment colour/stroke/shadow)
+ *    - ถ้า box inactive → 1 line (มีแค่ตัวอักษร)
+ *
+ * margin ของ dialogue ใช้ -1 (inherit จาก Style line) —— ตำแหน่ง/offset มาจาก
+ * style row ทั้งหมด และกล่อง padding มาจาก \bord ของ layer กล่องเอง
+ *
+ * @param boxOverride  box ของเส้นนี้ (displayStyle) ถ้า undefined ใช้ global
  */
 export function buildDialogue(
   cue: SubtitleCue,
   style: SubtitleStyleParams,
-  styleName: string = cue.position || 'bottom',
-  globalStyle: SubtitleStyleParams = style,
-): string {
+  styleName: string,
+  boxOverride: SubtitleBoxStyle | undefined,
+): string[] {
   const start = formatAssTime(cue.start);
   const end = formatAssTime(cue.end);
-  const pos = cue.position || style.position || 'bottom';
+  const margin = ',-1,-1,-1,,'; // inherit ทั้งหมดจาก style row
 
-  let text: string;
+  // ข้อความเดียวของทั้ง cue (สำหรับ layer กล่อง — ต้องการความกว้างรวมของทั้งบรรทัด)
+  const fullPlain = escapeAssText(
+    (cue.segments && cue.segments.length > 0) ? cue.segments.map((s) => s.text).join('') : (cue.text || ''),
+  );
+  // ข้อความที่แสดงจริง (segment colour/stroke/shadow)
+  let textLayer: string;
   if (cue.segments && cue.segments.length > 0) {
-    text = buildSegmentText(cue.segments, style);
+    textLayer = buildSegmentText(cue.segments, style);
   } else {
-    text = escapeAssText(cue.text || '');
+    textLayer = fullPlain;
   }
 
-  // marginV ของ dialogue — ใช้ y_offset ของ cue เป็นหลัก (override global)
-  // Padding ประมาณจาก global box (well enough) — marginV = y_offset% → px
-  const yPct = cue.y_offset ?? globalStyle.y_offset ?? 0;
-  const useBox = (cue.displayStyle ?? globalStyle.box)?.bgActive !== false;
-  const padV = useBox ? Math.round((cue.displayStyle ?? globalStyle.box)?.paddingY ?? 0) : 0;
-  const marginV = posVOffset(pos, yPct, padV);
+  const lines: string[] = [];
 
-  // ใช้ marginL/R ปกติจาก style row (0) — marginV ได้จากนี้
-  return `Dialogue: 0,${start},${end},${styleName},,0,0,${marginV},,${text}`;
+  // กล่อง layer (ด้านหลัง) — เฉพาะเมื่อมีกล่อง
+  const box = boxOverride ?? style.box;
+  const boxP = boxLayerParams(box);
+  if (boxP) {
+    // layer 0 = กล่องทึบโค้ง ใช้ text เต็มบรรทัด (สีกล่องล้วน ไม่มี segment colour)
+    lines.push(`Dialogue: 0,${start},${end},${styleName},${margin}${boxP.text}${fullPlain}`);
+  }
+
+  // text layer (ด้านหน้า) — layer 1 (อยู่หลังกล่อง เพราะกล่องเป็น 0)
+  lines.push(`Dialogue: 1,${start},${end},${styleName},${margin}${textLayer}`);
+
+  return lines;
 }
 
 /**
@@ -375,8 +424,8 @@ export function buildSegmentText(segments: SubtitleCueSegment[], style: Subtitle
     .map((seg) => {
       const tags: string[] = [];
 
-      // Font name — ต้องตรงกับ font registry เป๊ะ
-      const segFont = seg.style?.fontFamily || style.fontFamily;
+      // Font name — ต้องตรงกับ font registry เป๊ะ (ใช้ resolveFamilyName ป้องกัน value≠family)
+      const segFont = resolveFamilyName(seg.style?.fontFamily || style.fontFamily);
       tags.push(`\\fn${segFont}`);
 
       // Font size
@@ -395,24 +444,29 @@ export function buildSegmentText(segments: SubtitleCueSegment[], style: Subtitle
       const segOpacity = seg.style?.opacity ?? style.defaultSegmentStyle?.opacity ?? 1;
       tags.push(`\\c${colorWithOpacityToAss(segColor, segOpacity)}`);
 
-      // Stroke (outline) เฉพาะของ segment นี้
-      const strokeActive = seg.style?.strokeActive ?? style.defaultSegmentStyle?.strokeActive ?? false;
-      if (strokeActive && (seg.style?.strokeWidth ?? 0) > 0) {
-        const sw = seg.style?.strokeWidth ?? 0;
-        const sc = seg.style?.strokeColor || '#000000';
-        const so = seg.style?.strokeOpacity ?? 1;
-        tags.push(`\\bord${sw}`);
+      // Stroke (outline) เฉพาะของ segment นี้ — fallback ค่าไปที่ defaultSegmentStyle
+      const defSeg = style.defaultSegmentStyle;
+      const strokeActive = seg.style?.strokeActive ?? defSeg?.strokeActive ?? false;
+      const strokeWidth = seg.style?.strokeWidth ?? defSeg?.strokeWidth ?? 0;
+      if (strokeActive && strokeWidth > 0) {
+        const sc = seg.style?.strokeColor || defSeg?.strokeColor || '#000000';
+        const so = seg.style?.strokeOpacity ?? defSeg?.strokeOpacity ?? 1;
+        tags.push(`\\bord${strokeWidth}`);
         tags.push(`\\3c${colorWithOpacityToAss(sc, so)}`);
       } else {
         tags.push('\\bord0');
       }
 
-      // Shadow เฉพาะของ segment นี้
-      const shadowActive = seg.style?.shadowActive ?? style.defaultSegmentStyle?.shadowActive ?? false;
-      if (shadowActive && (seg.style?.shadowOffsetY ?? 0) !== 0) {
-        const sd = Math.max(1, Math.abs(seg.style?.shadowOffsetY ?? 1));
-        const shc = seg.style?.shadowColor || '#000000';
-        const sho = seg.style?.shadowOpacity ?? 0.5;
+      // Shadow เฉพาะของ segment นี้ — fallback ค่าไปที่ defaultSegmentStyle
+      // ASS รองรับ \shad เฉพาะระยะแนวเดียว (ยาว) จึงใช้ระยะของ offsetY เป็นหลัก
+      // และกรณี offsetY=0 แต่มี offsetX>0 → ใช้ offsetX แทน เพื่อให้เห็นผลไม่หายไป
+      const shadowActive = seg.style?.shadowActive ?? defSeg?.shadowActive ?? false;
+      const shX = seg.style?.shadowOffsetX ?? defSeg?.shadowOffsetX ?? 0;
+      const shY = seg.style?.shadowOffsetY ?? defSeg?.shadowOffsetY ?? 0;
+      if (shadowActive && (shX !== 0 || shY !== 0)) {
+        const sd = Math.max(1, Math.abs(shY || shX)); // ไม่ใช้ 0 → ใช้ X เป็น fallback
+        const shc = seg.style?.shadowColor || defSeg?.shadowColor || '#000000';
+        const sho = seg.style?.shadowOpacity ?? defSeg?.shadowOpacity ?? 0.5;
         tags.push(`\\shad${sd}`);
         tags.push(`\\4c${colorWithOpacityToAss(shc, sho)}`);
       } else {

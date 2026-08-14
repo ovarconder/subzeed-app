@@ -20,6 +20,7 @@ import type {
   SubtitleDisplayStyle,
   TextSegmentStyle,
 } from '@/lib/types';
+import { DEFAULT_DISPLAY_STYLE } from '@/lib/types';
 import type {
   RenderJobConfig,
   SubtitleBoxStyle,
@@ -166,6 +167,9 @@ export function buildRenderConfig(
       fontSize: opts.fontSize || 24,
       position: opts.position || 'bottom',
       y_offset: opts.y_offset ?? 0,
+      // ⭐ ให้ global box มีค่าเริ่มต้นเดียวกับ DEFAULT_DISPLAY_STYLE (มีกล่องตามดีไซน์)
+      //    เพื่อให้บรรทัดที่ไม่มี displayStyle ต่อเส้น ก็ยังได้กล่องเหมือนใน canvas preview
+      box: DEFAULT_DISPLAY_STYLE,
       defaultSegmentStyle,
     },
     output: {

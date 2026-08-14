@@ -1,7 +1,8 @@
 # 🎨 Subtitle Style System — Multi-Segment, Canvas Overlay, ASS Export
 
-> **อัปเดตล่าสุด:** ระหว่าง Session ที่เพิ่มระบบ หลายสีในบรรทัดเดียว
+> **อัปเดตล่าสุด:** Session แก้ไข ASS Export ให้ตรง design (font/effect/box)
 > **ไฟล์ที่เกี่ยวข้องทั้งหมดใน Session นี้**
+> - หมายเหตุ: pipeline ย้ายจาก `src/lib/video-renderer.ts` → `src/lib/subtitle-render/` แล้ว
 
 ---
 
@@ -154,35 +155,85 @@ interface SegmentStyleEditorProps {
 
 ## 6. FFmpeg ASS Export
 
-**ไฟล์:** `src/lib/video-renderer.ts`
+**ไฟล์:** `src/lib/subtitle-render/` (เดิม `src/lib/video-renderer.ts` ถูก refactor เป็นโฟลเดอร์นี้)
+**Pipeline:** `buildRenderConfig()` → `buildAss()` → `ffmpeg-command.ts` → ฝัง `drawtext` hardsub
 
-### ASS Override Codes ที่ใช้
+### Box / Background
+
+> **เทคนิคกล่องมุมโค้ง (blur-outline):** ASS ไม่มีกล่อง rect มุมโค้ง auto-fit โดยตรง
+> เราจึงวาดกล่องด้วย "text layer ซ้ำ" (layer 0 หลัง text) ที่ใช้ `\bord{หนา}` + `\blur{R}`
+> + `\1c{boxcolor}` → glyph blur จนเป็น**กล่องทึบมุมโค้ง** fit ตามความยาวข้อความอัตโนมัติ
+> (พิสูจน์ด้วยการ render จริงผ่าน ffmpeg + libass แล้ว)
+>
+> แต่ละบรรทัดที่มีกล่อง = **2 events**:
+> - `Layer 0` = กล่องทึบโค้ง (text ซ้ำ, เป็นสีกล่อง + bord/blur)
+> - `Layer 1` = ตัวอักษรปกติ (segment colour/stroke/shadow)
+
+| Effect | วิธี render ใน ASS | สถานะ |
+|--------|-------------------|-------|
+| กล่องพื้นหลัง (bgActive + bgOpacity + bgColor) | layer0 กล่อง `\1c{boxcolor}` (alpha จาก bgOpacity) | ✅ มีมุมโค้งจริง |
+| Padding X (paddingX) | `\bord` (ความหนากล่อง = max(paddingX, paddingY)) | ⚠️ เป็�nค่าคร่าว ๆ |
+| Padding Y (paddingY) | `\bord` (ความหนากล่องร่วมกับ paddingX) | ⚠️ ค่าคร่าว ๆ |
+| Border radius (borderRadius) | `\blur{R}` (ทำให้มุมมน) | ✅ ปรับมุมโค้งได้ |
+| Box shadow ของกล่อง (boxShadow) | — | ⚠️ **ไม่มีใน ASS** (ASS มีแค่ text shadow) |
+
+### ASS Override Codes ที่ใช้ (per-segment)
 
 | Effect | ASS Code | Canvas Equivalent |
 |--------|----------|-------------------|
 | Fill color | `{\c&HBBGGRR&}` | `fillStyle` |
-| Opacity | `{\alpha&HFF&}` | `globalAlpha` |
+| Opacity | ฝังใน `\c` ผ่าน `&HAABBGGRR&` (alpha) | `globalAlpha` |
+| Font family | `{\fnFamily}` (ผ่าน `resolveFamilyName`) | `fontFamily` |
+| Font size | `{\fsN}` (เฉพาะเมื่อต่างจาก global) | `fontSize` |
 | Bold | `{\b1}` | `fontWeight: 'bold'` |
 | Italic | `{\i1}` | `fontStyle: 'italic'` |
 | Stroke width | `{\bordN}` | `lineWidth` |
 | Stroke color | `{\3c&HBBGGRR&}` | `strokeStyle` |
-| Stroke alpha | `{\3a&HFF&}` | `globalAlpha` (stroke) |
-| Shadow dist | `{\shadN}` | `shadowOffsetY` |
+| Shadow dist | `{\shadN}` (ใช้ offsetY, fallback offsetX) | `shadowOffsetY` |
 | Shadow color | `{\4c&HBBGGRR&}` | `shadowColor` |
-| Shadow alpha | `{\4a&HFF&}` | `globalAlpha` (shadow) |
+
+### ⚠️ ข้อจำกัดของ ASS format (เอกสาร — ทำตาม design ได้ไม่ครบ 100%)
+
+ASS / libass มีข้อจำกัดที่ canvas ในเบราว์เซอร์ไม่เจอ ทำให้บาง effect ที่ design ตั้งไว้ไม่สามารถ
+render ให้เท่ากันเป๊ะได้:
+
+1. **Box shadow ของกล่อง** — ASS มีแค่ "text shadow" (`\shad`) ไม่มีเงาของกล่องพื้นหลัง
+   → กล่องจะไม่มี drop shadow (ทำไม่ได้ใน ASS)
+2. **Padding X/Y แยกกัน** — กล่องมุมโค้งใช้ `\bord` เป็นค่าความหนารอบทุกด้าน
+   → paddingX กับ paddingY จึงเป็นค่าเดียวกัน (ไม่แยกกันได้อิสระดัง canvas)
+3. **Border radius = `\blur`** — มุมโค้งทำได้จริง แต่เป็น "มนกลม" (soft) ตาม blur
+   ไม่ใช่ rect มุมโค้งคมเรียบเป๊ะแบบ vector (ใกล้เคียง แต่ไม่เท่ากัน)
+4. **Text shadow แบบ 2 มิติ + blur + angle** — ASS `\shad` รองรับแค่ระยะแนวเดียว (ตัวเลขเดียว)
+   render มาจึงได้เงาแนวเดียว ไม่ใช่เงารวม X+Y พร้อม blur/angle เหมือน canvas
+
+**จุดนี้เป็นข้อจำกัดของ format ASS เอง ไม่ใช่บั๊กของโค้ด** — ส่วน font, สี, stroke, กล่องพื้นหลัง
+**มุมโค้ง (ตอนนี้ทำได้จริงผ่าน blur-outline)**, ตำแหน่ง, y_offset วาดถูกต้องแล้ว
+
+### Detection/Logic สำคัญ (ที่แก้ให้ตรงตาม design)
+
+- **กล่องเริ่มต้น:** `buildRenderConfig` ตั้ง `style.box = DEFAULT_DISPLAY_STYLE` → ทุกบรรทัด
+  ที่ไม่มี `displayStyle` ตนเองจะได้กล่องตามดีไซน์ (ตรงกับ canvas)
+- **Margin inherit:** Dialogue ใช้ `-1` สำหรับ MarginL/R/V → ตำแหน่ง/offset inherit จาก Style line
+- **กล่องมุมโค้ง 2-layer:** กล่องเป็น `layer 0` (text ซ้ำ × `\bord`/`\blur`/`\1c`) บนหลัง `layer 1`
+  ตัวอักษร → fit ความยาวข้อความอัตโนมัติ (ไม่ต้องรู้ text width ล่วงหน้า)
+- **Stroke/shadow กับกล่อง:** ตั้งอิสระต่อกัน (กล่องไม่ตัด stroke/shadow ของตัวอักษร) ตรงกับ canvas
+- **y_offset ต่อเส้น:** per-line style คำนวณ `marginV` ตาม `cue.y_offset` (ไม่ใช่ global)
+- **Font:** ใช้ `resolveFamilyName()` กันบั๊กที่ `value ≠ family` (libass fallback เงียบ)
 
 ### Color Conversion
 
-ASS ใช้ **BGR little-endian** format: `&HBBGGRR&`
+ASS ใช้ **BGR little-endian** format: `&HBBGGRR&` (+ alpha `&HAABBGGRR&`)
 - Input: `#RRGGBB` (CSS hex)
 - Output: `&HBBGGRR&`
 
 ### ฟังก์ชันหลัก
 
-- `buildAss()` — สร้าง ASS string จาก subtitles + segments
-- `segmentToAss()` — แปลง TextSegment → ASS override tags
-- `hexToAssColor()` — แปลง hex → ASS BGR
+- `buildAss()` — สร้าง ASS string จาก style + cues
+- `buildSegmentText()` — แปลง segments → ASS override tags
+- `buildDialogue()` — สร้าง Dialogue line (margin `-1` inherit)
+- `hexToAss()` / `colorWithOpacityToAss()` — แปลง hex → ASS BGR + alpha
 - `escapeAssText()` — escape `{`, `}`, `|`, `\n`
+- Test: `node scripts/run-ts-test.cjs scripts/ass-builder-test.ts`
 
 ---
 
@@ -227,28 +278,32 @@ Canvas watermark ใช้:
 
 ---
 
-## ไฟล์ที่แก้ไขทั้งหมดใน Session นี้
+## ไฟล์ที่เกี่ยวข้อง (สถานะปัจจุบัน)
 
 | ไฟล์ | สถานะ |
 |------|--------|
-| `src/lib/types.ts` | ✅ แก้ไข — เพิ่ม types + helpers |
-| `src/lib/video-renderer.ts` | ✅ แก้ไข — ASS builder รองรับ segments |
-| `src/lib/store/subtitle-store.ts` | ✅ ไม่ต้องแก้ — `Partial<SubtitleEntry>` รองรับ segments อัตโนมัติ |
-| `src/components/studio/subtitle-canvas-overlay.tsx` | 🆕 สร้างใหม่ |
-| `src/components/studio/segment-style-editor.tsx` | 🆕 สร้างใหม่ |
-| `src/components/studio/subtitle-item.tsx` | ✅ แก้ไข — แสดง segments |
-| `src/app/studio/[id]/page.tsx` | ✅ แก้ไข — Integrate canvas + style editor |
-| `src/app/studio/page.tsx` | ✅ แก้ไข — TypeScript fix (segments required) |
-| `src/app/api/transcribe-and-save/route.ts` | ✅ แก้ไข — TypeScript fix (segments required) |
-| `docs/npm-setup.md` | 🆕 สร้างใหม่ |
-| `docs/subtitle-style-system.md` | 🆕 สร้างใหม่ (ไฟล์นี้) |
+| `src/lib/types.ts` | ✅ แก้ไข — types + helpers |
+| `src/lib/subtitle-render/ass-builder.ts` | ✅ แก้ไข — box/padding/margin/font/shadow ให้ตรง design |
+| `src/lib/subtitle-render/adapter-studio.ts` | ✅ แก้ไข — ตั้ง `style.box = DEFAULT_DISPLAY_STYLE` |
+| `src/lib/subtitle-render/font-registry.ts` | ✅ ใช้ `resolveFamilyName` ในทุกจุดตั้งชื่อฟอนต์ |
+| `src/lib/subtitle-render/types.ts` | ✅ types |
+| `scripts/ass-builder-test.ts` | ✅ แก้ไข — เพิ่ม verify design (box/padding/y_offset/shadow) |
+| `scripts/run-ts-test.cjs` | 🆕 runner สำหรับรัน test .ts |
+| `src/components/studio/subtitle-canvas-overlay.tsx` | ✅ canvas preview (design reference) |
+| `src/components/studio/segment-style-editor.tsx` | ✅ UI |
+| `src/components/studio/subtitle-item.tsx` | ✅ ใช้ segments |
+| `src/app/studio/[id]/page.tsx` | ✅ Integrate canvas + style editor |
+| `docs/subtitle-style-system.md` | ✅ อัปเดต (ไฟล์นี้) |
 
 ---
 
 ## Known Issues / TODOs
 
+- ⚠️ **ASS ข้อจำกัด (document แล้ว ใน section 6):** box shadow กล่อง, padding X/Y ไม่แยก,
+  border radius เป็น blur แบบมน (ไม่ใช่ rect โค้งคม), text shadow 2 มิติ + blur/angle
+- ⚠️ **กล่องมุมโค้ง** ทำได้จริงแล้วผ่านเทคนิค blur-outline (layer 0 กล่อง) แต่ paddingX/Y รวมเป็นค่าเดียว
 - [ ] Watermark ใน FFmpeg export — ต้องเพิ่ม `drawtext` filter หรือ ASS overlay
 - [ ] Canvas overlay ไม่แสดงเมื่อ video ไม่ได้ focus (ต้องกด play ก่อน)
 - [ ] Segment style editor ไม่มี undo/redo
 - [ ] Animation (fade in/out) — ยังไม่มีใน ASS
-- [ ] Font loading — ต้องโหลด Google Fonts ก่อน canvas render
+- [ ] Font loading — ต้องโหลด Google Fonts ก่อน canvas render (render ใช้ self-host ใน public/fonts)

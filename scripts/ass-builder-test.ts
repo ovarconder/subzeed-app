@@ -1,8 +1,8 @@
 // ============================================================
 // 🔍 Test: ass-builder.ts — พิมพ์ .ass string เพื่อตรวจด้วยตาเปล่า
 // ============================================================
-// รันด้วย: node --experimental-strip-types scripts/ass-builder-test.ts
-// (ต้องใช้ node >= 22.6) — ไม่ต้องรัน ffmpeg เลย
+// รันด้วย: node scripts/run-ts-test.cjs scripts/ass-builder-test.ts
+// (runner ใช้ typescript transpile — รองรับ import .ts ภายใน)
 // ============================================================
 
 import { buildAssSimple, buildAss, buildDialogue, buildSegmentText, formatAssTime, hexToAss, colorWithOpacityToAss, escapeAssText, opacityToAssAlpha } from '../src/lib/subtitle-render/ass-builder.ts';
@@ -93,5 +93,45 @@ const richAss = buildAss(
 section('5. buildAss (rich: segments + box + shadow + top position)', richAss);
 
 // ─── 6. Individual dialogue ──────────────────────────
-section('6. buildDialogue เดี่ยว',
-  buildDialogue({ start: 2, end: 5, text: 'Hello world' }, { fontFamily: 'Arimo', fontSize: 24, position: 'bottom', y_offset: 0 }));
+section('6. buildDialogue เดี่ยว (ไม่มีกล่อง → 1 line)',
+  buildDialogue({ start: 2, end: 5, text: 'Hello world' }, { fontFamily: 'Arimo', fontSize: 24, position: 'bottom', y_offset: 0 }, undefined, undefined).join('\n'));
+
+section('6b. buildDialogue กล่อง active (→ 2 lines: layer0 กล่อง blur, layer1 text)',
+  buildDialogue(
+    { start: 2, end: 5, text: 'Hello world', displayStyle: { bgActive: true, bgOpacity: 0.6, bgColor: '#333333', borderRadius: 8, paddingY: 8, paddingX: 14, boxShadow: { active: false, offsetX: 0, offsetY: 0, blur: 0, spread: 0, color: '#000000', opacity: 0 } } },
+    { fontFamily: 'Arimo', fontSize: 24, position: 'bottom', y_offset: 0 },
+    'bottom',
+    { bgActive: true, bgOpacity: 0.6, bgColor: '#333333', borderRadius: 8, paddingY: 8, paddingX: 14, boxShadow: { active: false, offsetX: 0, offsetY: 0, blur: 0, spread: 0, color: '#000000', opacity: 0 } },
+  ).join('\n'),
+);
+
+// ─── 7. Design-verification: ทุกบรรทัดได้กล่อง + padding + y_offset ต่อเส้น ──
+const designAss = buildAss(
+  {
+    fontFamily: 'Kanit',
+    fontSize: 24,
+    position: 'bottom',
+    y_offset: 80,
+    box: { bgActive: true, bgOpacity: 0.6, bgColor: '#000000', borderRadius: 6, paddingY: 6, paddingX: 12, boxShadow: { active: false, offsetX: 0, offsetY: 0, blur: 0, spread: 0, color: '#000000', opacity: 0 } },
+    defaultSegmentStyle: { color: '#FFFFFF', opacity: 1, strokeActive: false, shadowActive: false },
+  },
+  [
+    { start: 0, end: 2, text: 'เป็นค่าปกติ (กล่อง + paddingX 12)' },
+    { start: 3, end: 5, text: 'อันนี้เปิดกล่อง', displayStyle: { bgActive: true, bgOpacity: 0.9, bgColor: '#003366', borderRadius: 8, paddingY: 10, paddingX: 24, boxShadow: { active: false, offsetX: 0, offsetY: 0, blur: 0, spread: 0, color: '#000000', opacity: 0 } }, y_offset: 40 },
+    { start: 6, end: 8, text: 'อันนี้ปิดกล่อง (bgActive=false)', displayStyle: { bgActive: false, bgOpacity: 0.6, bgColor: '#000000', borderRadius: 0, paddingY: 6, paddingX: 12, boxShadow: { active: false, offsetX: 0, offsetY: 0, blur: 0, spread: 0, color: '#000000', opacity: 0 } }, y_offset: 30 },
+  ],
+);
+
+section('7. Design-verify: default box + per-line box + bgActive=false + y_offset', designAss);
+
+// ─── 8. shadow offsetX → \shad (fallback) ──────────────
+const shadowAss = buildAss(
+  { fontFamily: 'Roboto', fontSize: 20, position: 'bottom', y_offset: 0, defaultSegmentStyle: { color: '#FFFFFF', opacity: 1, strokeActive: false, shadowActive: false } },
+  [{
+    start: 0, end: 2, text: 'shadow x-only', segments: [
+      { text: 'ShadowX', style: { shadowActive: true, shadowOffsetX: 4, shadowOffsetY: 0, shadowColor: '#111122', shadowOpacity: 0.7 } },
+      { text: 'ShadowY', style: { shadowActive: true, shadowOffsetX: 0, shadowOffsetY: 3, shadowColor: '#334455', shadowOpacity: 0.8 } },
+    ],
+  }],
+);
+section('8. shadow offsetX (x-only → \\shad) + offsetY', shadowAss);
